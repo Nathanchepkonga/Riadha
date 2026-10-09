@@ -40,6 +40,11 @@ export function countdown(to: Date, now = Date.now()) {
   return `${m}m`;
 }
 
+/** Whether a moment has passed (kept here so pages don't call Date.now() during render). */
+export function isPast(d: Date, now = Date.now()) {
+  return d.getTime() < now;
+}
+
 export function ageFrom(dob: string | null | undefined, now = new Date()) {
   if (!dob) return null;
   const b = new Date(dob);

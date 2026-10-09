@@ -15,6 +15,7 @@ import { createDb } from "../src/db/client";
 import * as s from "../src/db/schema";
 import { recalculateGameweek, saveFixtureResult, type StatInput } from "../src/lib/fantasy/engine";
 import { BUDGET, MAX_PER_CLUB, SQUAD_SHAPE, defaultLineup, validateSquad, type Pos } from "../src/lib/fantasy/rules";
+import { seedModules } from "./seed-modules";
 
 const { db, client } = createDb(process.env.DATABASE_URL, 3);
 
@@ -135,6 +136,8 @@ async function main() {
   if (reset) {
     console.log("Wiping app tables…");
     await db.execute(sql`TRUNCATE TABLE
+      ad_events, ad_campaigns, businesses, event_rsvps, community_events, community_messages,
+      community_members, communities, scout_bookmarks, post_comments,
       league_members, leagues, entry_gameweeks, transfers, entry_picks, fantasy_entries,
       player_stats, fixtures, gameweeks, players, contact_requests, verification_requests,
       post_likes, posts, follows, athlete_stats, otp_codes, users, kpl_clubs
@@ -571,6 +574,9 @@ async function main() {
     ...entryRows.slice(0, 12).map((e) => ({ leagueId: office.id, entryId: e.id })),
     ...entryRows.slice(10, 19).map((e) => ({ leagueId: chama.id, entryId: e.id })),
   ]);
+
+  /* communities, marketplace, scouting, comments */
+  await seedModules(db);
 
   console.log(`Done. GW${NEXT_GW} deadline: ${nextDeadline.toISOString()}`);
   console.log("Admin login: +254700000001 (OTP is shown on screen in dev mode)");

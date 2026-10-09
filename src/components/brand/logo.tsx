@@ -1,152 +1,193 @@
+import { useId } from "react";
 import { cn } from "@/lib/format";
+import { LOCKUPS, MARK_D, MARK_VIEWBOX, TAGLINE_D, WORD_D, type Lockup } from "./logo-art";
 
 /*
- * Riadha logo system, rebuilt from the designer's board (design/brand/02–11, 14, 18).
- * The monogram paths were traced from 05_Icon_Monogram.png and cleaned up; viewBox is 100×80.
- * Wordmark and tagline are set in Montserrat Bold, as in the Canva file.
+ * Riadha logo system from the official brand kit (design/brand-kit/Riadha_Brand_Kit/Logo/SVG).
+ * The artwork is the kit's vector outlines, placed exactly as in its lockups. Never retype, redraw,
+ * stretch, rotate, recolour, add effects to or re-space it. Minimum sizes (kit): primary/horizontal
+ * 140px wide, stacked 90px, icon 16px; drop the tagline below 160px wide (use `compact`).
  */
 
-export const MARK_PATHS = [
-  "M25 0H66.6C68.6 0 69.6 1.6 68.5 3.1L52.8 22C52.1 22.7 51.3 23 50.3 23H34C28.6 23 24.4 27.3 24.4 32.8V56.4C24.4 56.8 24.2 57.2 23.9 57.5L4.4 78.6C2.9 80.2.2 79.8.1 77.4L0 26.5C0 21 2.6 16.4 7.2 12L15.2 4.3C18 1.6 21.4 0 25 0Z",
-  "M83.2.4H96.4C99.4.4 100.9 3.8 99 6.3L57.6 62.4C56.6 64 55.1 64.9 53.4 64.9H34C32.1 64.9 31.2 63.3 32.3 62L80.3 2.3C81 1 82 .4 83.2.4Z",
-];
+/** The mark's two pieces: the "r" and the speed slash. */
+export const MARK_PARTS = MARK_D.split(/Z(?=M)/).map((d, i, all) => (i < all.length - 1 ? `${d}Z` : d));
 
-const TONE = { green: "#B7F34A", navy: "#081018", white: "#FFFFFF" } as const;
-type Tone = keyof typeof TONE;
+const C = { navy: "#081018", white: "#FFFFFF", green: "#B7F34A", greenDeep: "#8DD63A", black: "#000000" };
 
-export function LogoMark({ tone = "green", className, title }: { tone?: Tone; className?: string; title?: string }) {
+export type LogoTheme = "light" | "dark" | "mono-dark" | "mono-light" | "mono-black" | "mono-green";
+
+/** Kit variants: full-color (light), full-color-reversed (dark), and the single-colour versions. */
+function palette(theme: LogoTheme) {
+  switch (theme) {
+    case "dark":
+      return { mark: "gradient", ink: C.white, dot: C.green, rule: 0.35 };
+    case "mono-dark":
+      return { mark: C.navy, ink: C.navy, dot: C.navy, rule: 1 };
+    case "mono-light":
+      return { mark: C.white, ink: C.white, dot: C.white, rule: 1 };
+    case "mono-black":
+      return { mark: C.black, ink: C.black, dot: C.black, rule: 1 };
+    case "mono-green":
+      return { mark: C.green, ink: C.green, dot: C.green, rule: 1 };
+    default:
+      return { mark: "gradient", ink: C.navy, dot: C.greenDeep, rule: 0.35 };
+  }
+}
+
+/** The mark gradient (#8DD63A → #B7F34A along the mark's diagonal), in the mark's own coordinates. */
+function MarkGradient({ id }: { id: string }) {
   return (
-    <svg viewBox="0 0 100 80" className={cn("h-auto shrink-0", className)} role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true}>
-      {MARK_PATHS.map((d) => (
-        <path key={d.slice(0, 12)} d={d} fill={TONE[tone]} />
+    <linearGradient id={id} gradientUnits="userSpaceOnUse" x1="0" y1="407.5" x2="519" y2="0">
+      <stop offset="0" stopColor={C.greenDeep} />
+      <stop offset="1" stopColor={C.green} />
+    </linearGradient>
+  );
+}
+
+const place = ([x, y, k]: readonly [number, number, number]) => `translate(${x} ${y}) scale(${k})`;
+
+// Mark + wordmark without the tagline, cropped from the horizontal lockup (for app bars, < 160px).
+const COMPACT: Lockup = { viewBox: [1374.46, 252.07], mark: LOCKUPS.horizontal.mark, word: LOCKUPS.horizontal.word };
+// Wordmark height in lockup units; `size` sets this height on screen and everything scales with it.
+const WORD_H = 238.8;
+
+type Variant = "primary" | "horizontal" | "stacked" | "wordmark" | "compact";
+
+/**
+ * A logo lockup. `size` is the wordmark's height (px number or any CSS length, e.g. a clamp());
+ * `animated` plays the brand intro (mark pieces slide in along the diagonal, wordmark wipes on).
+ */
+export function Logo({
+  variant = "primary",
+  theme = "light",
+  size = 32,
+  animated,
+  className,
+}: {
+  variant?: Variant;
+  theme?: LogoTheme;
+  size?: number | string;
+  animated?: boolean;
+  className?: string;
+}) {
+  const gid = useId();
+  const lock = variant === "compact" ? COMPACT : LOCKUPS[variant];
+  const p = palette(theme);
+  const [w, h] = lock.viewBox;
+  const scale = (n: number) => (typeof size === "number" ? `${((n * size) / WORD_H).toFixed(2)}px` : `calc(${size} * ${(n / WORD_H).toFixed(4)})`);
+  const markFill = p.mark === "gradient" ? `url(#${gid})` : p.mark;
+  const label = lock.tag ? "Riadha: Sport, Talent, Scouting" : "Riadha";
+
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      role="img"
+      aria-label={label}
+      className={cn("block shrink-0", animated && "logo-intro", className)}
+      style={{ width: scale(w), height: scale(h) }}
+    >
+      {lock.mark && (
+        <g transform={place(lock.mark)}>
+          {p.mark === "gradient" && <MarkGradient id={gid} />}
+          {MARK_PARTS.map((d, i) => (
+            <path key={i} d={d} fill={markFill} className={animated ? `logo-intro-mark${i}` : undefined} />
+          ))}
+        </g>
+      )}
+      {lock.word && (
+        <g transform={place(lock.word)}>
+          <path d={WORD_D} transform="translate(-19.8 0)" fill={p.ink} className={animated ? "logo-intro-word" : undefined} />
+        </g>
+      )}
+      {lock.rule && <rect x={lock.rule[0]} y={lock.rule[1]} width={lock.rule[2]} height={lock.rule[3]} fill={p.ink} opacity={p.rule} />}
+      {lock.tag && lock.tagParts && (
+        <g transform={place(lock.tag)} className={animated ? "logo-intro-tag" : undefined}>
+          {lock.tagParts.map(([x, y, k], i) => (
+            <path key={i} d={TAGLINE_D[i]} transform={`translate(${x} ${y}) scale(${k})`} fill={p.ink} />
+          ))}
+          {lock.dots?.map(([cx, cy, r]) => <circle key={cx} cx={cx} cy={cy} r={r} fill={p.dot} />)}
+        </g>
+      )}
+    </svg>
+  );
+}
+
+/** The "r" mark on its own (kit icon-* files). `tone="gradient"` is full colour. */
+export function LogoMark({
+  tone = "gradient",
+  className,
+  title,
+  animated,
+}: {
+  tone?: "gradient" | "green" | "navy" | "white" | "black";
+  className?: string;
+  title?: string;
+  animated?: boolean;
+}) {
+  const gid = useId();
+  const fill = tone === "gradient" ? `url(#${gid})` : { green: C.green, navy: C.navy, white: C.white, black: C.black }[tone];
+  return (
+    <svg
+      viewBox={`0 0 ${MARK_VIEWBOX[0]} ${MARK_VIEWBOX[1]}`}
+      className={cn("h-auto shrink-0", animated && "logo-intro", className)}
+      role={title ? "img" : undefined}
+      aria-label={title}
+      aria-hidden={title ? undefined : true}
+    >
+      {tone === "gradient" && <MarkGradient id={gid} />}
+      {MARK_PARTS.map((d, i) => (
+        <path key={i} d={d} fill={fill} className={animated ? `logo-intro-mark${i}` : undefined} />
       ))}
     </svg>
   );
 }
 
-export function Wordmark({ light, className }: { light?: boolean; className?: string }) {
+/**
+ * Kit app icons. `favicon`: navy rounded square, solid green mark (Favicon/favicon.svg).
+ * `app`: green square, navy mark (App_Icon/ios). `dark`: navy square, gradient mark (dark variant).
+ */
+export function AppIcon({ variant = "favicon", size = 48, className }: { variant?: "favicon" | "app" | "dark"; size?: number; className?: string }) {
+  const gid = useId();
+  const bg = variant === "app" ? C.green : C.navy;
+  const fill = variant === "app" ? C.navy : variant === "dark" ? `url(#${gid})` : C.green;
   return (
-    <span className={cn("font-brand font-bold lowercase leading-none tracking-[-0.035em]", light ? "text-white" : "text-navy", className)}>
-      riadha
-    </span>
+    <svg viewBox="0 0 1024 1024" width={size} height={size} className={cn("shrink-0", className)} aria-hidden>
+      <rect width="1024" height="1024" rx={variant === "favicon" ? 224 : 230} fill={bg} />
+      <g transform={variant === "favicon" ? "translate(120.6 221.24) scale(1.46436)" : "translate(203 282.45) scale(1.15607)"}>
+        {variant === "dark" && <MarkGradient id={gid} />}
+        <path d={MARK_D} fill={fill} />
+      </g>
+    </svg>
   );
 }
 
-/** "SPORT • TALENT • SCOUTING" with electric-green separators. */
-export function Tagline({ light, fit, className }: { light?: boolean; fit?: boolean; className?: string }) {
-  // `fit` justifies the line to its container (the primary lockup matches the wordmark's width);
-  // the dots sit between real spaces so justification has somewhere to put the slack.
-  const dot = <span className="text-green" aria-hidden>•</span>;
+/** Social avatar (kit Social/riadha-social-avatar): navy, gradient mark, safe for circular crops. */
+export function SocialAvatar({ size = 48, className }: { size?: number; className?: string }) {
+  const gid = useId();
   return (
-    <span
-      className={cn(
-        "font-brand font-bold uppercase leading-none whitespace-nowrap",
-        fit ? "block w-0 min-w-full tracking-[0.12em] [text-align-last:justify]" : "tracking-[0.26em] [word-spacing:0.25em]",
-        light ? "text-white" : "text-navy",
-        className,
-      )}
-    >
+    <svg viewBox="0 0 1080 1080" width={size} height={size} className={cn("shrink-0 rounded-full", className)} aria-hidden>
+      <rect width="1080" height="1080" fill={C.navy} />
+      <g transform="translate(231 310.45) scale(1.15607)">
+        <MarkGradient id={gid} />
+        <path d={MARK_D} fill={`url(#${gid})`} />
+      </g>
+    </svg>
+  );
+}
+
+/**
+ * "SPORT • TALENT • SCOUTING" as live text (kit typography: Sora SemiBold, +18% tracking). Use the
+ * lockups when it sits with the logo; this is for labels, marquees and footers.
+ */
+export function Tagline({ light, className }: { light?: boolean; className?: string }) {
+  const dot = <span className={light ? "text-green" : "text-green-deep"} aria-hidden>•</span>;
+  return (
+    <span className={cn("whitespace-nowrap font-semibold uppercase tracking-[0.18em] [word-spacing:0.3em]", light ? "text-white" : "text-navy", className)}>
       Sport {dot} Talent {dot} Scouting
     </span>
   );
 }
 
 export function Slogan({ light, className }: { light?: boolean; className?: string }) {
-  return (
-    <p className={cn("font-brand font-medium italic", light ? "text-white/90" : "text-navy", className)}>
-      Pick your XI. Post your run. Get scouted.
-    </p>
-  );
-}
-
-type Theme = "light" | "dark" | "mono-dark" | "mono-light";
-
-function toneFor(theme: Theme) {
-  return {
-    mark: (theme === "mono-dark" ? "navy" : theme === "mono-light" ? "white" : "green") as Tone,
-    light: theme === "dark" || theme === "mono-light",
-  };
-}
-
-/**
- * Lockups from the board: primary (mark + wordmark, tagline under the wordmark), stacked (centred),
- * horizontal (mark + wordmark | tagline), and compact (mark + wordmark only, for app bars).
- * `size` is the wordmark font size (px, or any CSS length such as a clamp() for fluid heroes);
- * everything else scales from it in em.
- */
-export function Logo({
-  variant = "primary",
-  theme = "light",
-  size = 32,
-  className,
-}: {
-  variant?: "primary" | "stacked" | "horizontal" | "compact";
-  theme?: Theme;
-  size?: number | string;
-  className?: string;
-}) {
-  const { mark, light } = toneFor(theme);
-  const word = <Wordmark light={light} className="block" />;
-  const style = { fontSize: size };
-
-  if (variant === "stacked") {
-    return (
-      <span className={cn("inline-flex flex-col items-center", className)} style={style} role="img" aria-label="Riadha: Sport, Talent, Scouting">
-        <LogoMark tone={mark} className="w-[1.35em]" />
-        <span className="mt-[0.18em]">{word}</span>
-        <Tagline light={light} className="mt-[0.45em] text-[0.2em]" />
-      </span>
-    );
-  }
-  if (variant === "horizontal") {
-    return (
-      <span className={cn("inline-flex items-center", className)} style={style} role="img" aria-label="Riadha: Sport, Talent, Scouting">
-        <LogoMark tone={mark} className="w-[1.2em]" />
-        <span className="ml-[0.3em]">{word}</span>
-        <span className={cn("mx-[0.55em] h-[1.1em] w-px", light ? "bg-white/30" : "bg-navy/25")} />
-        <Tagline light={light} className="text-[0.26em]" />
-      </span>
-    );
-  }
-  if (variant === "compact") {
-    return (
-      <span className={cn("inline-flex items-center", className)} style={style} role="img" aria-label="Riadha">
-        <LogoMark tone={mark} className="w-[1.15em]" />
-        <span className="ml-[0.28em]">{word}</span>
-      </span>
-    );
-  }
-  // Primary: the tagline is justified to exactly the wordmark's width, as on the board.
-  return (
-    <span className={cn("inline-flex items-center", className)} style={style} role="img" aria-label="Riadha: Sport, Talent, Scouting">
-      <LogoMark tone={mark} className="w-[1.4em]" />
-      <span className="ml-[0.24em] inline-flex flex-col">
-        {word}
-        <Tagline light={light} fit className="mt-[0.4em] text-[0.15em]" />
-      </span>
-    </span>
-  );
-}
-
-/** Favicon: navy rounded square, green mark. App icon: green rounded square, navy mark. */
-export function AppIcon({ variant = "favicon", size = 48, className }: { variant?: "favicon" | "app"; size?: number; className?: string }) {
-  const app = variant === "app";
-  return (
-    <span
-      className={cn("inline-grid shrink-0 place-items-center", app ? "bg-green" : "bg-navy", className)}
-      style={{ width: size, height: size, borderRadius: size * 0.24 }}
-      aria-hidden
-    >
-      <LogoMark tone={app ? "navy" : "green"} className="w-[58%]" />
-    </span>
-  );
-}
-
-/** Social avatar: navy disc with a green ring. */
-export function SocialAvatar({ size = 48, className }: { size?: number; className?: string }) {
-  return (
-    <span className={cn("inline-grid shrink-0 place-items-center rounded-full bg-navy", className)} style={{ width: size, height: size, boxShadow: `inset 0 0 0 ${Math.max(2, size * 0.04)}px #B7F34A` }} aria-hidden>
-      <LogoMark tone="green" className="w-[52%]" />
-    </span>
-  );
+  return <p className={cn("font-normal", light ? "text-white/85" : "text-navy", className)}>Pick your XI. Post your run. Get scouted.</p>;
 }

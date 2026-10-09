@@ -2,11 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq, sql } from "drizzle-orm";
-import { BadgeCheck, Camera, Play, Plus } from "lucide-react";
+import { BadgeCheck, Camera, Plane, Play, Plus, Sparkles } from "lucide-react";
 import { db } from "@/db";
 import { contactRequests, entryGameweeks, fantasyEntries } from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getNextFixtureForClub, getPosts, getProfile, type FeedPost } from "@/lib/queries";
+import { canScout } from "@/lib/roles";
+import { isBookmarked } from "@/lib/scout";
+import { BookmarkButton } from "@/components/scout/bookmark-button";
 import { ageFrom, cn, formatDate, formatTime } from "@/lib/format";
 import { ClubBadge } from "@/components/ui/brand";
 import { AppIcon } from "@/components/brand/logo";
@@ -62,11 +65,15 @@ export default async function ProfilePage({ params }: PageProps<"/u/[handle]">) 
   const highlight = posts.find((p) => p.mediaUrl) ?? posts[0];
   const pb = stats[0];
   const showContact = user.role === "athlete" || user.role === "club";
-  const menuUser = viewer ? { handle: viewer.handle, isAdmin: viewer.isAdmin } : null;
+  const menuUser = viewer ? { handle: viewer.handle, isAdmin: viewer.isAdmin, canScout: canScout(viewer) } : null;
+  const scouting = !!viewer && !own && user.role === "athlete" && canScout(viewer);
+  const saved = scouting && viewer ? !!(await isBookmarked(viewer.id, user.id)) : false;
+  const build = [user.heightCm ? `${user.heightCm} cm` : null, user.preferredSide ? `${user.preferredSide === "Both" ? "Two-footed / both sides" : `${user.preferredSide} side`}` : null].filter(Boolean);
   const meta = [user.sport, user.position, user.county, age !== null && user.role === "athlete" ? `${age} yrs` : null].filter(Boolean);
 
   return (
     <>
+      <div className="scroll-progress" aria-hidden />
       {/* ───── Screen 1: hero ───── */}
       <section className="relative isolate mx-auto h-[min(780px,100svh)] min-h-[620px] max-w-[480px] overflow-hidden bg-offwhite text-navy">
         <header className="absolute inset-x-0 top-0 z-40 flex items-center justify-between px-5 pt-[calc(1.25rem+var(--sat))]">
@@ -159,7 +166,10 @@ export default async function ProfilePage({ params }: PageProps<"/u/[handle]">) 
             {own ? (
               <Link href="/me/edit" className="btn btn-light btn-sm shrink-0">Edit</Link>
             ) : (
-              <FollowButton userId={user.id} following={isFollowing} signedIn={!!viewer} className="shrink-0" />
+              <span className="flex shrink-0 items-center gap-1.5">
+                {scouting && <BookmarkButton athleteId={user.id} saved={saved} tone="dark" />}
+                <FollowButton userId={user.id} following={isFollowing} signedIn={!!viewer} className="shrink-0" />
+              </span>
             )}
           </div>
           <dl className="mt-4 flex gap-6 text-sm">
@@ -176,6 +186,30 @@ export default async function ProfilePage({ params }: PageProps<"/u/[handle]">) 
             ))}
           </dl>
           {user.bio && <p className="mt-4 text-[15px] leading-relaxed text-white/80">{user.bio}</p>}
+          {user.role === "athlete" && (user.openToOpportunities || user.willingToRelocate || build.length > 0) && (
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              {user.openToOpportunities && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-green px-2 py-1 text-[11px] font-semibold text-navy">
+                  <Sparkles size={12} /> Open to opportunities
+                </span>
+              )}
+              {user.willingToRelocate && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-cobalt px-2 py-1 text-[11px] font-semibold text-white">
+                  <Plane size={12} /> Willing to relocate
+                </span>
+              )}
+              {build.map((b) => (
+                <span key={b} className="rounded-md bg-white/10 px-2 py-1 text-[11px] font-semibold text-white/85">{b}</span>
+              ))}
+            </div>
+          )}
+          {user.role === "athlete" && user.skills.length > 0 && (
+            <ul className="mt-4 flex flex-wrap gap-1.5" aria-label="Skills" data-stagger="40">
+              {user.skills.map((s) => (
+                <li key={s} data-reveal="scale" className="rounded-full border border-white/20 px-3 py-1.5 text-[12px] font-medium text-white/90">{s}</li>
+              ))}
+            </ul>
+          )}
           {club && (
             <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/10 py-1 pl-1 pr-3 text-[13px]">
               <ClubBadge short={club.shortName} primary={club.primaryColor} secondary={club.secondaryColor} size={24} />

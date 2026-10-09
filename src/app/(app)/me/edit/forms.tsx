@@ -1,12 +1,13 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { BadgeCheck, Camera, Trash2 } from "lucide-react";
+import { BadgeCheck, Camera, Plus, Radar, Trash2, X } from "lucide-react";
 import { addStat, removeStat, updateProfile } from "@/actions/profile";
 import { Avatar } from "@/components/ui/avatar";
 import { FormMessage, SubmitButton } from "@/components/ui/forms";
 import type { Role } from "@/db/schema";
-import { COUNTIES, SPORTS } from "@/lib/constants";
+import { Toggle } from "@/components/ui/controls";
+import { ALL_SKILLS, COUNTIES, SKILLS, SPORTS } from "@/lib/constants";
 import { ageFrom } from "@/lib/format";
 
 type EditableUser = {
@@ -24,6 +25,11 @@ type EditableUser = {
   kplClubId: string;
   avatarUrl: string | null;
   heroUrl: string | null;
+  skills: string[];
+  heightCm: string;
+  preferredSide: string;
+  openToOpportunities: boolean;
+  willingToRelocate: boolean;
 };
 
 function useObjectUrl() {
@@ -42,6 +48,7 @@ export function ProfileForm({ user, clubs }: { user: EditableUser; clubs: { id: 
   const [avatar, setAvatar] = useObjectUrl();
   const [hero, setHero] = useObjectUrl();
   const [dob, setDob] = useState(user.dateOfBirth);
+  const [sport, setSport] = useState(user.sport);
   const minor = (ageFrom(dob) ?? 99) < 18;
   const creator = user.role === "athlete" || user.role === "club";
 
@@ -97,7 +104,7 @@ export function ProfileForm({ user, clubs }: { user: EditableUser; clubs: { id: 
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label" htmlFor="sport">Sport</label>
-          <select id="sport" name="sport" defaultValue={user.sport} className="field">
+          <select id="sport" name="sport" value={sport} onChange={(e) => setSport(e.target.value)} className="field">
             <option value="">—</option>
             {SPORTS.map((s) => <option key={s}>{s}</option>)}
           </select>
@@ -140,9 +147,87 @@ export function ProfileForm({ user, clubs }: { user: EditableUser; clubs: { id: 
       )}
       {user.role !== "athlete" && <input type="hidden" name="dateOfBirth" value={user.dateOfBirth} />}
 
+      {user.role === "athlete" && <ScoutingFields user={user} sport={sport} />}
+
       <FormMessage state={state} />
       <SubmitButton className="btn-primary btn-lg btn-block">Save profile</SubmitButton>
     </form>
+  );
+}
+
+/** What scouts filter on: skills, build, side, and whether the athlete is looking. */
+function ScoutingFields({ user, sport }: { user: EditableUser; sport: string }) {
+  const [skills, setSkills] = useState<string[]>(user.skills);
+  const [custom, setCustom] = useState("");
+  const suggestions = [...new Set([...(SKILLS[sport] ?? ALL_SKILLS.slice(0, 14)), ...skills])];
+  const add = (s: string) => {
+    const v = s.trim().replace(/\s+/g, " ").slice(0, 24);
+    if (v && !skills.includes(v) && skills.length < 12) setSkills([...skills, v]);
+  };
+  return (
+    <section id="scouting" className="scroll-mt-24 rounded-2xl border border-line bg-surface p-4">
+      <h2 className="flex items-center gap-2 text-[16px] font-semibold">
+        <Radar size={18} className="text-cobalt" /> Scouting profile
+      </h2>
+      <p className="mt-1 text-[13px] text-muted">Scouts and coaches search by these. Be honest; clubs verify.</p>
+      <input type="hidden" name="skills" value={skills.join(",")} />
+      <p className="label mt-4">Skills ({skills.length}/12)</p>
+      <div className="flex flex-wrap gap-1.5">
+        {suggestions.map((s) => {
+          const on = skills.includes(s);
+          return (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={on}
+              onClick={() => (on ? setSkills(skills.filter((x) => x !== s)) : add(s))}
+              className={on ? "inline-flex items-center gap-1 rounded-full border border-navy bg-navy px-3 py-1.5 text-[13px] font-medium text-white" : "rounded-full border border-line px-3 py-1.5 text-[13px] font-medium hover:border-gray-400"}
+            >
+              {s} {on && <X size={12} />}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex gap-2">
+        <input
+          value={custom}
+          onChange={(e) => setCustom(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add(custom);
+              setCustom("");
+            }
+          }}
+          maxLength={24}
+          placeholder="Add a skill"
+          aria-label="Add a skill"
+          className="field field-sm flex-1"
+        />
+        <button type="button" onClick={() => (add(custom), setCustom(""))} className="btn btn-secondary btn-sm h-9">
+          <Plus size={14} /> Add
+        </button>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div>
+          <label className="label" htmlFor="heightCm">Height (cm)</label>
+          <input id="heightCm" name="heightCm" type="number" inputMode="numeric" min={100} max={240} defaultValue={user.heightCm} placeholder="178" className="field" />
+        </div>
+        <div>
+          <label className="label" htmlFor="preferredSide">Strong side</label>
+          <select id="preferredSide" name="preferredSide" defaultValue={user.preferredSide} className="field">
+            <option value="">Not relevant</option>
+            <option value="Right">Right</option>
+            <option value="Left">Left</option>
+            <option value="Both">Both</option>
+          </select>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-col gap-3">
+        <Toggle name="openToOpportunities" defaultChecked={user.openToOpportunities} label="Open to opportunities (trials, scholarships, clubs)" onText="Yes, show the badge" offText="Not right now" />
+        <Toggle name="willingToRelocate" defaultChecked={user.willingToRelocate} label="Willing to move county for the right club" onText="Yes" offText="No" />
+      </div>
+    </section>
   );
 }
 

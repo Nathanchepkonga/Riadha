@@ -1,7 +1,7 @@
 # Riadha — MVP
 
 **Pick your XI. Post your run. Get scouted.**
-Fantasy football for the Kenyan Premier League, a showcase for every Kenyan athlete, and athlete portfolio pages. This is "Wave 1" of the [product blueprint](https://claude.ai/artifact/1dcZV6U4TJbQKghhToCJob), built as a mobile-first web app (installable as a PWA).
+Fantasy football for the Kenyan Premier League, a showcase and portfolio for every Kenyan athlete, a TikTok-style Watch feed, a Scout Portal, Communities with chat and events, and a Marketplace for sports businesses. Built from the [product blueprint](https://claude.ai/artifact/1dcZV6U4TJbQKghhToCJob) as a mobile-first web app (installable as a PWA).
 
 ## Run it
 
@@ -12,11 +12,14 @@ npm run dev          # http://localhost:3000
 
 The database is Neon Postgres (project `riadha`, Frankfurt). Credentials live in `.env.local` (not committed).
 
+`next dev` needs a couple of GB of free memory. If it exits with "Fatal process out of memory", close some apps or run the production server instead: `npm run build && npm run start -- -p 3001`.
+
 | Command | What it does |
 | --- | --- |
 | `npm run db:generate` | Create a migration after editing `src/db/schema.ts` |
 | `npm run db:migrate` | Apply migrations to the database |
-| `npm run db:seed` | Seed an empty database with demo data |
+| `npm run db:seed` | Seed an empty database with demo data (includes the modules below) |
+| `npm run db:seed:modules` | Add demo communities, businesses, ads, shortlists and comments to an existing database (skips if already there) |
 | `npm run db:seed -- --reset` | **Wipe all app data** and reseed |
 | `npm run typecheck` / `npm run lint` / `npm run build` | Checks |
 
@@ -30,7 +33,8 @@ SMS is off in dev (`OTP_DEV_MODE=true`), so the 6-digit code is shown on screen 
 | `0700000101` | Faith Chebet: verified athlete (400m) |
 | `0700000102` | Brian Wekesa: verified footballer, has inbox messages |
 | `0700000105` | Dennis Kiprop: 16-year-old athlete (guardian safeguarding) |
-| `0700000201` | Karura Dawn Runners: verified club |
+| `0700000201` | Karura Dawn Runners: verified club (owns Nairobi Morning Run) |
+| `0700000302` | Lena Fischer: scout (Scout Portal, shortlist) |
 | `0700000400`–`0700000435` | Fantasy managers with 6 gameweeks of history |
 
 Add your own number to `ADMIN_PHONES` in `.env.local` to become an admin on sign-in.
@@ -39,7 +43,8 @@ Tip: `localhost:3000` and `127.0.0.1:3000` keep separate cookies, so you can be 
 
 ## Brand & UI
 
-- **Brand** (strict, from the designer's Canva board in `design/brand/`): Deep Navy `#081018`, Electric Green `#B7F34A`, Cobalt Blue `#3867FF`, Off White `#F5F7F2`, Grays 500/400/200/100; Sora for the UI, Montserrat for the logo lockup. The logo system (primary, stacked, horizontal, compact, mono, favicon, app icon, social avatar) is in `src/components/brand/logo.tsx`, and the chevron and slash graphics are in `graphics.tsx`.
+- **Brand** (strict, from the official kit in `design/brand-kit/Riadha_Brand_Kit/`): Deep Navy `#081018`, Electric Green `#B7F34A`, Cobalt Blue `#3867FF`, Off White `#F5F7F2`, Grays 500/400/200/100, mark gradient `#8DD63A → #B7F34A` (logo only). Sora for everything. The logo is the kit's vector outlines (`src/components/brand/logo-art.ts`, generated from `Logo/SVG`) rendered by `logo.tsx` in every lockup and colourway; never retype it. Favicons, app icons and the manifest icons are the kit files. Chevrons, speed stripes, the stripe tile and the aurora light are in `graphics.tsx`; every slanted edge uses the brand diagonal (37.57°, `--brand-slant`).
+- **Motion** (all switched off under reduced motion): launch splash (once per session), page transitions (React `<ViewTransition>`), scroll reveals (`data-reveal` + `data-stagger`, one observer in `components/motion/reveal-observer.tsx`), kinetic headlines, marquee tapes, tilt cards, scroll-linked parallax and progress, a floating dock with a sliding indicator, an auto-hiding app bar, and brand-coloured "speed shard" bursts with haptics on likes, follows, joins, RSVPs and signings (`src/lib/celebrate.ts`).
 - **UI kit** (from the Sportify Figma kit in `design/ui-kit/`, restyled in the Riadha brand): buttons, text inputs, search, toggles, chips, tabs, segmented switch, section headers, tags, list rows, news carousel, highlight cards, league tiles, match cards, score header and stats table.
 - **Style guide:** open [`/styleguide`](http://localhost:3000/styleguide) to see every brand asset and component in one place.
 
@@ -55,20 +60,26 @@ Tip: `localhost:3000` and `127.0.0.1:3000` keep separate cookies, so you can be 
 - **Safeguarding**: date of birth required for athletes; under-18 profiles route contact requests to the guardian and club.
 - **Verification ticks**: cobalt (athlete), green (club), grey (scout). There's a request flow and an admin review queue, and evidence images are deleted once a decision is made.
 - **Fixtures & Match Centre** `/fixtures`: upcoming and results by gameweek or club, and per-match overview, player stats and fantasy points.
-- **Admin console** `/admin`: verification, gameweek deadlines, match results with per-player stats, and player prices and availability.
+- **Watch** `/watch`: full-screen vertical reels with autoplay in view, tap to pause, double-tap to like, mute, follow, comments sheet, share, infinite loading and a sponsored reel every five posts.
+- **Comments** on every post (feed, Watch and the post page), with flood control and author/admin deletion.
+- **Scout Portal** `/scout` (scouts, clubs, admins): search every athlete across all 47 counties by sport, position, county, age range and skills, with filters for open to opportunities, willing to relocate, verified and has video; a shortlist pipeline (watching → contacted → trial → signed) with private notes at `/scout/shortlist`. Athletes add skills, height, strong side and availability in `/me/edit`.
+- **Communities** `/communities`, `/c/[slug]`: create and join communities; members-only group chat (polling, optimistic sends, moderation); events with capacity, RSVP (going / interested), attendee lists and an "Add to calendar" `.ics`; owners promote admins, hand over ownership and remove members.
+- **Marketplace & ads** `/market`: gyms, academies, shops, physios, coaches, venues and nutrition with amenities, prices, hours and WhatsApp/call/email; owners manage listings and create targeted ads (sport, county, role, age) with a live preview at `/market/ads/new`. Ads are reviewed in `/admin/ads`, served on Home, Watch and the Marketplace, and report views, clicks and CTR. Under-18s only see ads from businesses verified in `/admin/businesses`. Billing isn't built yet.
+- **Admin console** `/admin`: verification, gameweek deadlines, match results with per-player stats, player prices and availability, ad review and business verification.
 
 ## Project map
 
 ```
 src/
-  app/                 routes (App Router). (app)/ = signed-in area with tab bar
-  actions/             server actions: auth, social, profile, fantasy, admin
+  app/                 routes (App Router). (app)/ = signed-in area with app bar + dock, (immersive)/ = Watch
+  actions/             server actions: auth, social, profile, fantasy, admin, comments, scout, communities, market
   db/schema.ts         Drizzle schema (source of truth); migrations in /drizzle
   lib/fantasy/         rules.ts (pure), scoring.ts, lineup.ts (auto-subs), engine.ts (DB), data.ts (queries)
   lib/auth/            OTP, sessions (signed JWT cookie), SMS
-  components/          brand/ (logo, graphics), ui/ (kit primitives), sport/ (kit cards), shell/, feed/, fantasy/, profile/, landing/, motion/
-design/               brand/ (designer boards) and ui-kit/ (Sportify export): source material
-scripts/seed.ts        demo data + season simulation
+  lib/                 scout.ts, communities.ts, market.ts, ads.ts, watch.ts (module queries), celebrate.ts
+  components/          brand/ (logo, graphics), ui/ (kit primitives), sport/ (kit cards), shell/, feed/, fantasy/, profile/, landing/, motion/, watch/, scout/, communities/, market/
+design/               brand-kit/ (official kit), brand/ (earlier boards) and ui-kit/ (Sportify export): source material
+scripts/seed.ts        demo data + season simulation (calls seed-modules.ts)
 ```
 
 Design tokens (colours, fonts, motion keyframes) are in `src/app/globals.css`.
@@ -81,6 +92,6 @@ Design tokens (colours, fonts, motion keyframes) are in `src/app/globals.css`.
 4. **Legal.** Register with the ODPC as a data controller (Data Protection Act). Keep fantasy free-to-enter, or get gaming advice before any paid contests.
 5. **KYC.** Automated ID and liveness checks (Smile ID) for ticks.
 
-## Next (Waves 2–3 from the blueprint)
+## Next
 
-Clubs & crews (events, RSVPs, chat), live match centre (WebSockets), M-Pesa (Riadha Plus, memberships), Strava import, clubs verifying member stats, Scout Desk (search, percentile radars, shortlists, guardian-routed contact), and the chips (Derby Double, wildcard, bench boost).
+Live match centre (WebSockets) and real-time chat, M-Pesa (ad wallet, Riadha Plus, memberships, event tickets), Strava import, clubs verifying member stats, percentile radars for scouts, and the fantasy chips (Derby Double, wildcard, bench boost).

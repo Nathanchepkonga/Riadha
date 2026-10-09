@@ -7,13 +7,15 @@ const NAV = [
   { href: "/admin/verification", label: "Verification" },
   { href: "/admin/gameweeks", label: "Gameweeks & stats" },
   { href: "/admin/players", label: "Players" },
+  { href: "/admin/ads", label: "Ads" },
+  { href: "/admin/businesses", label: "Businesses" },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAdmin();
   return (
     <>
-      <TopBar user={{ handle: user.handle, isAdmin: true }} />
+      <TopBar user={{ handle: user.handle, isAdmin: true, canScout: true }} />
       <div className="mx-auto max-w-[760px] px-4 pb-[calc(6rem+var(--sab))] pt-4">
         <p className="kicker">Admin console</p>
         <nav className="no-scrollbar -mx-4 mt-2 flex gap-2 overflow-x-auto px-4">

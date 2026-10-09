@@ -2,14 +2,27 @@ import "server-only";
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db";
-import { athleteStats, fixtures, follows, kplClubs, posts, users } from "@/db/schema";
+import { athleteStats, fixtures, follows, kplClubs, postComments, posts, users } from "@/db/schema";
 
 export type FeedPost = Awaited<ReturnType<typeof getPosts>>[number];
 
-const likeCount = sql<number>`(select count(*)::int from post_likes pl where pl.post_id = ${posts.id})`;
+// Correlated subqueries name the outer table explicitly: in single-table selects Drizzle renders
+// ${posts.id} as a bare "id", which would bind to the inner table's own id column.
+const likeCount = sql<number>`(select count(*)::int from post_likes pl where pl.post_id = "posts"."id")`;
+const commentCount = sql<number>`(select count(*)::int from post_comments pc where pc.post_id = "posts"."id")`;
 
 /** Posts with author, like count and whether the viewer liked them. */
-export async function getPosts(opts: { viewerId?: string; mode?: "forYou" | "following" | "author"; authorId?: string; postId?: number; sport?: string; mediaOnly?: boolean; limit?: number }) {
+export async function getPosts(opts: {
+  viewerId?: string;
+  /** "watch" is the For You ranking with an extra boost for video, for the vertical reel feed. */
+  mode?: "forYou" | "following" | "author" | "watch";
+  authorId?: string;
+  postId?: number;
+  sport?: string;
+  mediaOnly?: boolean;
+  limit?: number;
+  offset?: number;
+}) {
   const viewer = opts.viewerId ?? "00000000-0000-0000-0000-000000000000";
   const where: SQL[] = [];
   if (opts.mode === "following") {
@@ -31,6 +44,9 @@ export async function getPosts(opts: { viewerId?: string; mode?: "forYou" | "fol
     + (case when ${posts.mediaUrl} is not null then 6 else 0 end)
     + least(${likeCount}, 40) * 0.3
     - extract(epoch from (now() - ${posts.createdAt})) / 21600`;
+  const order = opts.mode === "forYou" ? desc(forYouScore)
+    : opts.mode === "watch" ? desc(sql`${forYouScore} + (case when ${posts.mediaType} = 'video' then 10 else 0 end)`)
+    : desc(posts.createdAt);
 
   return db
     .select({
@@ -43,7 +59,9 @@ export async function getPosts(opts: { viewerId?: string; mode?: "forYou" | "fol
       location: posts.location,
       createdAt: posts.createdAt,
       likes: likeCount,
+      comments: commentCount,
       liked: sql<boolean>`exists(select 1 from post_likes pl where pl.post_id = ${posts.id} and pl.user_id = ${viewer})`,
+      followingAuthor: sql<boolean>`exists(select 1 from follows f where f.followee_id = ${posts.authorId} and f.follower_id = ${viewer})`,
       author: {
         id: users.id,
         handle: users.handle,
@@ -57,8 +75,33 @@ export async function getPosts(opts: { viewerId?: string; mode?: "forYou" | "fol
     .from(posts)
     .innerJoin(users, eq(users.id, posts.authorId))
     .where(where.length ? and(...where) : undefined)
-    .orderBy(opts.mode === "forYou" ? desc(forYouScore) : desc(posts.createdAt))
-    .limit(opts.limit ?? 30);
+    .orderBy(order, desc(posts.id))
+    .limit(opts.limit ?? 30)
+    .offset(opts.offset ?? 0);
+}
+
+export type PostComment = {
+  id: number;
+  body: string;
+  createdAt: string;
+  user: { id: string; handle: string; displayName: string; avatarUrl: string | null; role: FeedPost["author"]["role"]; verified: boolean };
+};
+
+/** Comments on a post, oldest first. */
+export async function getComments(postId: number, limit = 100): Promise<PostComment[]> {
+  const rows = await db
+    .select({
+      id: postComments.id,
+      body: postComments.body,
+      createdAt: postComments.createdAt,
+      user: { id: users.id, handle: users.handle, displayName: users.displayName, avatarUrl: users.avatarUrl, role: users.role, verified: users.verified },
+    })
+    .from(postComments)
+    .innerJoin(users, eq(users.id, postComments.userId))
+    .where(eq(postComments.postId, postId))
+    .orderBy(asc(postComments.createdAt))
+    .limit(limit);
+  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
 }
 
 export async function getProfile(handle: string, viewerId?: string) {
@@ -117,7 +160,7 @@ export async function searchPeople(opts: { q?: string; sport?: string; role?: "a
       position: users.position,
       county: users.county,
       dateOfBirth: users.dateOfBirth,
-      followers: sql<number>`(select count(*)::int from follows f where f.followee_id = ${users.id})`,
+      followers: sql<number>`(select count(*)::int from follows f where f.followee_id = "users"."id")`,
     })
     .from(users)
     .where(and(...where))

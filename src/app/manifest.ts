@@ -10,14 +10,16 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    // Launch splash = the brand splash (navy); the status bar then matches the off-white app bar.
+    // Launch splash = the brand splash (navy, as in the kit); the status bar then matches the app bar.
     background_color: "#081018",
     theme_color: "#F5F7F2",
     categories: ["sports", "social"],
+    // Kit Favicon/android-chrome icons: full-bleed green with the navy mark well inside the 80% safe
+    // circle, so the same files work as maskable icons.
     icons: [
-      { src: "/pwa-icon/192", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/pwa-icon/512", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/pwa-icon/maskable-512", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/brand/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/brand/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/brand/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }

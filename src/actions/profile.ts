@@ -38,6 +38,25 @@ export async function updateProfile(_prev: State, form: FormData): Promise<State
   const guardian = d.guardianPhone ? normalizePhone(d.guardianPhone) : null;
   if (d.guardianPhone && !guardian) return { error: "Guardian phone number doesn't look right." };
 
+  // Scouting profile (athletes only): skills, build and availability.
+  let scouting = {};
+  if (user.role === "athlete") {
+    const skills = [...new Set(String(form.get("skills") ?? "").split(",").map((s) => s.trim().replace(/\s+/g, " ")).filter(Boolean))];
+    if (skills.some((s) => s.length > 24)) return { error: "Keep each skill under 24 characters." };
+    if (skills.length > 12) return { error: "Pick up to 12 skills." };
+    const heightRaw = String(form.get("heightCm") ?? "").trim();
+    const heightCm = heightRaw ? Number(heightRaw) : null;
+    if (heightCm !== null && (!Number.isInteger(heightCm) || heightCm < 100 || heightCm > 240)) return { error: "Height should be in centimetres (100–240)." };
+    const side = String(form.get("preferredSide") ?? "");
+    scouting = {
+      skills,
+      heightCm,
+      preferredSide: ["Left", "Right", "Both"].includes(side) ? side : null,
+      openToOpportunities: form.get("openToOpportunities") === "on",
+      willingToRelocate: form.get("willingToRelocate") === "on",
+    };
+  }
+
   let avatar, hero;
   try {
     avatar = await saveUpload(form.get("avatar"), ["image"]);
@@ -60,6 +79,7 @@ export async function updateProfile(_prev: State, form: FormData): Promise<State
       dateOfBirth: d.dateOfBirth || null,
       guardianPhone: guardian,
       kplClubId: d.kplClubId ? Number(d.kplClubId) : null,
+      ...scouting,
       ...(avatar && { avatarUrl: avatar.url }),
       ...(hero && { heroUrl: hero.url }),
       ...(form.get("removeHero") === "on" && !hero && { heroUrl: null }),

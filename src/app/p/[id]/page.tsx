@@ -4,9 +4,10 @@ import { notFound } from "next/navigation";
 import { ChevronLeft, MapPin, Trash2 } from "lucide-react";
 import { deletePost } from "@/actions/social";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getPosts } from "@/lib/queries";
+import { getComments, getPosts } from "@/lib/queries";
 import { formatDate } from "@/lib/format";
 import { LikeButton, ShareButton } from "@/components/feed/buttons";
+import { CommentThread } from "@/components/feed/comments";
 import { StatBackdrop } from "@/components/sport/cards";
 import { Avatar } from "@/components/ui/avatar";
 import { Tag } from "@/components/ui/nav";
@@ -38,6 +39,7 @@ export default async function PostPage({ params }: PageProps<"/p/[id]">) {
   if (!data) notFound();
   const { post, viewer } = data;
   const canDelete = viewer && (viewer.id === post.author.id || viewer.isAdmin);
+  const comments = await getComments(post.id);
   const headline = post.statValue ? `${post.statLabel}: ${post.statValue}` : (post.body.split(/(?<=[.!?])\s/)[0] ?? post.body);
 
   return (
@@ -103,6 +105,15 @@ export default async function PostPage({ params }: PageProps<"/p/[id]">) {
               </form>
             )}
           </div>
+
+          <section className="mt-8" aria-labelledby="comments-title">
+            <h2 id="comments-title" className="h5">
+              Comments <span className="text-muted">{comments.length || ""}</span>
+            </h2>
+            <div className="card mt-3 overflow-hidden">
+              <CommentThread postId={post.id} postAuthorId={post.author.id} viewer={viewer ? { id: viewer.id, isAdmin: viewer.isAdmin } : null} initial={comments} className="max-h-[70dvh]" />
+            </div>
+          </section>
 
           {!viewer && (
             <div className="card mt-6 p-5 text-center">

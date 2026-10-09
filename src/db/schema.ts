@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
@@ -20,6 +21,21 @@ export const verificationStatusEnum = pgEnum("verification_status", [
   "approved",
   "rejected",
 ]);
+export const scoutStageEnum = pgEnum("scout_stage", ["watching", "contacted", "trial", "signed"]);
+export const communityRoleEnum = pgEnum("community_role", ["owner", "admin", "member"]);
+export const rsvpStatusEnum = pgEnum("rsvp_status", ["going", "interested"]);
+export const businessCategoryEnum = pgEnum("business_category", [
+  "gym",
+  "academy",
+  "shop",
+  "physio",
+  "coach",
+  "venue",
+  "nutrition",
+  "other",
+]);
+export const adStatusEnum = pgEnum("ad_status", ["pending", "active", "paused", "rejected", "ended"]);
+export const adEventKindEnum = pgEnum("ad_event_kind", ["impression", "click"]);
 
 /* ───────────── Identity & social ───────────── */
 
@@ -54,9 +70,15 @@ export const users = pgTable(
     kplClubId: integer("kpl_club_id").references(() => kplClubs.id),
     avatarUrl: text("avatar_url"),
     heroUrl: text("hero_url"),
+    // Scouting profile (athletes)
+    skills: text("skills").array().notNull().default(sql`'{}'::text[]`),
+    heightCm: integer("height_cm"),
+    preferredSide: text("preferred_side"), // "Left" | "Right" | "Both"
+    openToOpportunities: boolean("open_to_opportunities").notNull().default(false),
+    willingToRelocate: boolean("willing_to_relocate").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("users_role_idx").on(t.role)],
+  (t) => [index("users_role_idx").on(t.role), index("users_sport_county_idx").on(t.sport, t.county)],
 );
 
 export const athleteStats = pgTable(
@@ -356,6 +378,209 @@ export const leagueMembers = pgTable(
   (t) => [primaryKey({ columns: [t.leagueId, t.entryId] })],
 );
 
+/* ───────────── Feed comments ───────────── */
+
+export const postComments = pgTable(
+  "post_comments",
+  {
+    id: serial("id").primaryKey(),
+    postId: integer("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("post_comments_post_idx").on(t.postId, t.createdAt)],
+);
+
+/* ───────────── Scout portal ───────────── */
+
+/** A scout's shortlist: one row per athlete, with a pipeline stage and private notes. */
+export const scoutBookmarks = pgTable(
+  "scout_bookmarks",
+  {
+    scoutId: uuid("scout_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    athleteId: uuid("athlete_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    stage: scoutStageEnum("stage").notNull().default("watching"),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.scoutId, t.athleteId] })],
+);
+
+/* ───────────── Communities ───────────── */
+
+export const communities = pgTable(
+  "communities",
+  {
+    id: serial("id").primaryKey(),
+    slug: text("slug").notNull().unique(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    category: text("category").notNull(), // a sport or an interest, e.g. "Running", "Chess"
+    county: text("county"),
+    coverUrl: text("cover_url"),
+    isPrivate: boolean("is_private").notNull().default(false),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("communities_category_idx").on(t.category)],
+);
+
+export const communityMembers = pgTable(
+  "community_members",
+  {
+    communityId: integer("community_id")
+      .notNull()
+      .references(() => communities.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: communityRoleEnum("role").notNull().default("member"),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.communityId, t.userId] }), index("community_members_user_idx").on(t.userId)],
+);
+
+export const communityMessages = pgTable(
+  "community_messages",
+  {
+    id: serial("id").primaryKey(),
+    communityId: integer("community_id")
+      .notNull()
+      .references(() => communities.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("community_messages_room_idx").on(t.communityId, t.id)],
+);
+
+export const communityEvents = pgTable(
+  "community_events",
+  {
+    id: serial("id").primaryKey(),
+    communityId: integer("community_id")
+      .notNull()
+      .references(() => communities.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    location: text("location").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    capacity: integer("capacity"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("community_events_room_idx").on(t.communityId, t.startsAt)],
+);
+
+export const eventRsvps = pgTable(
+  "event_rsvps",
+  {
+    eventId: integer("event_id")
+      .notNull()
+      .references(() => communityEvents.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: rsvpStatusEnum("status").notNull().default("going"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.userId] })],
+);
+
+/* ───────────── Marketplace & ads ───────────── */
+
+export const businesses = pgTable(
+  "businesses",
+  {
+    id: serial("id").primaryKey(),
+    slug: text("slug").notNull().unique(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    category: businessCategoryEnum("category").notNull(),
+    description: text("description").notNull().default(""),
+    county: text("county").notNull(),
+    address: text("address"),
+    phone: text("phone"),
+    whatsapp: text("whatsapp"),
+    email: text("email"),
+    website: text("website"),
+    logoUrl: text("logo_url"),
+    coverUrl: text("cover_url"),
+    amenities: text("amenities").array().notNull().default(sql`'{}'::text[]`),
+    sports: text("sports").array().notNull().default(sql`'{}'::text[]`),
+    priceFrom: integer("price_from"), // KSh
+    hours: text("hours"),
+    verified: boolean("verified").notNull().default(false),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("businesses_category_county_idx").on(t.category, t.county)],
+);
+
+/**
+ * A targeted ad for a business. Empty targeting arrays mean "everyone". Campaigns start as
+ * "pending" and an admin approves them. (Billing is intentionally not modelled yet.)
+ */
+export const adCampaigns = pgTable(
+  "ad_campaigns",
+  {
+    id: serial("id").primaryKey(),
+    businessId: integer("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    headline: text("headline").notNull(),
+    body: text("body").notNull(),
+    imageUrl: text("image_url"),
+    ctaLabel: text("cta_label").notNull().default("Learn more"),
+    ctaUrl: text("cta_url"), // null = the business's Riadha page
+    targetSports: text("target_sports").array().notNull().default(sql`'{}'::text[]`),
+    targetCounties: text("target_counties").array().notNull().default(sql`'{}'::text[]`),
+    targetRoles: text("target_roles").array().notNull().default(sql`'{}'::text[]`),
+    minAge: integer("min_age"),
+    maxAge: integer("max_age"),
+    status: adStatusEnum("status").notNull().default("pending"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull().defaultNow(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    reviewNote: text("review_note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ad_campaigns_status_idx").on(t.status)],
+);
+
+export const adEvents = pgTable(
+  "ad_events",
+  {
+    id: serial("id").primaryKey(),
+    campaignId: integer("campaign_id")
+      .notNull()
+      .references(() => adCampaigns.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    kind: adEventKindEnum("kind").notNull(),
+    placement: text("placement"), // "home" | "watch" | "market"
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ad_events_campaign_kind_idx").on(t.campaignId, t.kind)],
+);
+
 export type User = typeof users.$inferSelect;
 export type Player = typeof players.$inferSelect;
 export type KplClub = typeof kplClubs.$inferSelect;
@@ -364,3 +589,8 @@ export type Gameweek = typeof gameweeks.$inferSelect;
 export type Fixture = typeof fixtures.$inferSelect;
 export type Position = (typeof positionEnum.enumValues)[number];
 export type Role = (typeof roleEnum.enumValues)[number];
+export type ScoutStage = (typeof scoutStageEnum.enumValues)[number];
+export type BusinessCategory = (typeof businessCategoryEnum.enumValues)[number];
+export type Community = typeof communities.$inferSelect;
+export type Business = typeof businesses.$inferSelect;
+export type AdCampaign = typeof adCampaigns.$inferSelect;

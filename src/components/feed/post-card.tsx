@@ -7,9 +7,10 @@ import { StatBackdrop } from "@/components/sport/cards";
 import type { FeedPost } from "@/lib/queries";
 import { cn, timeAgo } from "@/lib/format";
 import { LikeButton, ShareButton } from "./buttons";
+import { CommentButton } from "./comments";
 
 /** Full-bleed post card: media (or a navy stat poster), author + stat tag over a soft floor blur. */
-export function PostCard({ post, signedIn, priority }: { post: FeedPost; signedIn: boolean; priority?: boolean }) {
+export function PostCard({ post, signedIn, priority, viewer }: { post: FeedPost; signedIn: boolean; priority?: boolean; viewer?: { id: string; isAdmin: boolean } }) {
   const hasMedia = !!post.mediaUrl;
   return (
     <article className="relative overflow-hidden rounded-3xl bg-navy" aria-label={`Post by ${post.author.displayName}`}>
@@ -36,8 +37,9 @@ export function PostCard({ post, signedIn, priority }: { post: FeedPost; signedI
         <div className="floor-blur pointer-events-none absolute inset-x-0 bottom-0 h-3/5" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-navy/90 via-navy/40 to-transparent" />
 
-        <div className="absolute bottom-24 right-3 z-10 flex flex-col gap-3">
+        <div className="absolute bottom-20 right-3 z-10 flex flex-col gap-3">
           <LikeButton postId={post.id} liked={post.liked} likes={post.likes} signedIn={signedIn} />
+          <CommentButton postId={post.id} postAuthorId={post.author.id} count={post.comments} viewer={viewer ?? null} />
           <ShareButton path={`/p/${post.id}`} title={`${post.author.displayName} on Riadha`} />
         </div>
 

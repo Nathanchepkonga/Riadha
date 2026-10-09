@@ -34,6 +34,11 @@ export default async function EditProfilePage() {
           kplClubId: user.kplClubId ? String(user.kplClubId) : "",
           avatarUrl: user.avatarUrl,
           heroUrl: user.heroUrl,
+          skills: user.skills,
+          heightCm: user.heightCm ? String(user.heightCm) : "",
+          preferredSide: user.preferredSide ?? "",
+          openToOpportunities: user.openToOpportunities,
+          willingToRelocate: user.willingToRelocate,
         }}
         clubs={clubs}
       />

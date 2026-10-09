@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { ArrowRight, Flame, Plus } from "lucide-react";
 import { AppIcon, Logo, LogoMark, Slogan, SocialAvatar, Tagline } from "@/components/brand/logo";
-import { ChevronPattern, SlashStripes } from "@/components/brand/graphics";
+import { Aurora, ChevronLines, ChevronPattern, SlashStripes, SpeedStripes } from "@/components/brand/graphics";
+import { KineticText } from "@/components/motion/kinetic";
+import { Marquee } from "@/components/motion/marquee";
+import { Tilt } from "@/components/motion/tilt";
 import { HighlightCard, LeagueTile, MatchCard, NewsSlide, ScoreHeader, StatsTable } from "@/components/sport/cards";
 import { ClubBadge } from "@/components/ui/brand";
 import { SearchField, Toggle } from "@/components/ui/controls";
@@ -39,13 +42,18 @@ function Block({ id, title, source, children }: { id: string; title: string; sou
 export default function StyleGuide() {
   return (
     <main className="mx-auto max-w-[1040px] px-5 pb-24">
-      <header className="relative -mx-5 mb-4 overflow-hidden bg-navy px-5 pb-12 pt-[calc(3rem+var(--sat))] text-white">
-        <SlashStripes className="absolute -bottom-2 right-0 w-48 -scale-x-100" />
-        <Logo variant="primary" theme="dark" size={48} />
-        <p className="mt-6 max-w-[60ch] text-white/70">Brand from the designer&apos;s Canva board (design/brand). Components ported from the Sportify UI kit (design/ui-kit) and redrawn in the Riadha brand.</p>
+      <header className="relative isolate -mx-5 mb-4 overflow-hidden bg-navy px-5 pb-12 pt-[calc(3rem+var(--sat))] text-white">
+        <Aurora />
+        <SpeedStripes animated fade className="absolute -bottom-2 -left-4 w-72 opacity-80" />
+        <div className="relative">
+          <Logo variant="primary" theme="dark" size={48} animated />
+          <p className="mt-6 max-w-[60ch] text-white/70">
+            Brand from the official Riadha brand kit (design/brand-kit). Components ported from the Sportify UI kit (design/ui-kit) and redrawn in the Riadha brand. Motion is decorative and switches off with reduced motion.
+          </p>
+        </div>
       </header>
 
-      <Block id="logo" title="Logo system" source="Brand board 02–11, 14, 18">
+      <Block id="logo" title="Logo system" source="Brand kit · Logo/SVG (official outlines, never retyped)">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 [&>*]:min-w-0 [&>*]:overflow-x-auto">
           <div className="card grid min-h-44 place-items-center p-6"><Logo variant="primary" size={40} /></div>
           <div className="card grid min-h-44 place-items-center p-6"><Logo variant="stacked" size={40} /></div>
@@ -57,6 +65,7 @@ export default function StyleGuide() {
             <LogoMark className="w-16" title="Riadha monogram" />
             <AppIcon size={64} />
             <AppIcon variant="app" size={64} />
+            <AppIcon variant="dark" size={64} />
             <SocialAvatar size={64} />
           </div>
         </div>
@@ -66,7 +75,42 @@ export default function StyleGuide() {
         </div>
       </Block>
 
-      <Block id="colour" title="Colour" source="Brand board 12">
+      <Block id="motion" title="Motion & graphics" source="Brand kit · Guidelines (pattern, speed stripes, splash) · src/app/globals.css">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="relative isolate min-h-56 overflow-hidden rounded-2xl bg-navy p-6 text-white">
+            <Aurora />
+            <p className="kicker relative text-green">Aurora + kinetic type</p>
+            <KineticText text="Find the *next star.*" className="relative mt-3 text-[40px] font-bold leading-none tracking-[-0.04em]" />
+          </div>
+          <div className="relative min-h-56 overflow-hidden rounded-2xl">
+            <ChevronPattern className="absolute inset-0 h-full w-full" />
+          </div>
+          <div className="relative min-h-40 overflow-hidden rounded-2xl bg-navy">
+            <SpeedStripes animated fade className="absolute bottom-0 left-0 w-2/3" />
+            <ChevronLines className="absolute -right-10 top-0 h-full w-auto" count={6} />
+          </div>
+          <Tilt className="rounded-2xl">
+            <div className="edge-glow grid min-h-40 place-items-center rounded-2xl bg-navy p-6 text-center text-white">
+              <p className="text-[14px] text-white/70">Tilt card with gradient edge. Move the pointer over it.</p>
+            </div>
+          </Tilt>
+        </div>
+        <Marquee className="mt-4 rounded-xl bg-green py-3 text-navy">
+          {["Sport", "Talent", "Scouting", "Pick your XI", "Post your run", "Get scouted"].map((t) => (
+            <span key={t} className="text-[13px] font-bold uppercase tracking-[0.18em]">{t}</span>
+          ))}
+        </Marquee>
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4" data-stagger="80">
+          {["up", "blur", "slant", "wipe"].map((r) => (
+            <div key={r} data-reveal={r} className="card grid h-24 place-items-center text-[13px] font-semibold">
+              data-reveal=&quot;{r}&quot;
+            </div>
+          ))}
+        </div>
+        <p className="helper mt-3">Every slanted edge uses the brand diagonal (37.57° from vertical, <code>--brand-slant</code>). Never mirror stripes or chevrons: they always lean forward.</p>
+      </Block>
+
+      <Block id="colour" title="Colour" source="Brand kit · Guidelines/riadha-brand-colors">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {COLORS.map((c) => (
             <div key={c.hex} className="card overflow-hidden">
@@ -81,7 +125,7 @@ export default function StyleGuide() {
         <p className="helper mt-3">Electric Green is a fill colour. Put navy text on it; never use it for text on light backgrounds.</p>
       </Block>
 
-      <Block id="type" title="Typography: Sora" source="Brand board 13 · scale from the UI kit (H1–H10)">
+      <Block id="type" title="Typography: Sora" source="Brand kit · Guidelines/riadha-typography · scale from the UI kit (H1–H10)">
         <div className="card divide-y divide-line/70">
           {[
             ["h1", "H1 · 40 Bold", "Pick your XI."],

@@ -1,15 +1,18 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
+import { useOptimistic, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Heart, Share2 } from "lucide-react";
 import { toggleFollow, toggleLike } from "@/actions/social";
+import { burst, haptic } from "@/lib/celebrate";
 import { cn, compact } from "@/lib/format";
 
 export function LikeButton({ postId, liked, likes, signedIn }: { postId: number; liked: boolean; likes: number; signedIn: boolean }) {
   const [state, setState] = useState({ liked, likes });
+  const [pop, setPop] = useState(0);
   const [, start] = useTransition();
   const router = useRouter();
+  const icon = useRef<HTMLSpanElement>(null);
   return (
     <button
       type="button"
@@ -18,6 +21,11 @@ export function LikeButton({ postId, liked, likes, signedIn }: { postId: number;
       onClick={() => {
         if (!signedIn) return router.push("/login");
         const next = { liked: !state.liked, likes: state.likes + (state.liked ? -1 : 1) };
+        if (next.liked) {
+          setPop((p) => p + 1);
+          haptic();
+          burst(icon.current, { count: 9, spread: 46 });
+        }
         setState(next);
         start(async () => {
           const now = await toggleLike(postId).catch(() => state.liked);
@@ -26,8 +34,9 @@ export function LikeButton({ postId, liked, likes, signedIn }: { postId: number;
       }}
       className="flex flex-col items-center gap-1 text-[11px] font-semibold text-white"
     >
-      <span className={cn("glass-dark grid h-11 w-11 place-items-center rounded-full transition-transform active:scale-90", state.liked && "text-green")}>
-        <Heart size={21} fill={state.liked ? "currentColor" : "none"} strokeWidth={2.2} />
+      <span ref={icon} className={cn("glass-dark grid h-11 w-11 place-items-center rounded-full transition-transform active:scale-90", state.liked && "text-green")}>
+        {/* Re-keyed on each like so the pop animation replays. */}
+        <Heart key={pop} size={21} fill={state.liked ? "currentColor" : "none"} strokeWidth={2.2} className={pop ? "animate-heart-pop" : undefined} />
       </span>
       {compact(state.likes)}
     </button>
@@ -68,8 +77,12 @@ export function FollowButton({ userId, following, signedIn, className }: { userI
     <button
       type="button"
       disabled={pending}
-      onClick={() => {
+      onClick={(e) => {
         if (!signedIn) return router.push("/login");
+        if (!optimistic) {
+          haptic();
+          burst(e.currentTarget, { count: 8, spread: 50 });
+        }
         start(async () => {
           setOptimistic(!optimistic);
           await toggleFollow(userId);
