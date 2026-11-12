@@ -34,7 +34,7 @@ export function ShortlistItem({ entry }: { entry: Entry }) {
   const current = STAGES.findIndex((s) => s.value === entry.stage);
 
   return (
-    <article data-reveal="up" className={cn("card p-4 transition-opacity", removing && "opacity-40")}>
+    <article data-reveal="up" suppressHydrationWarning className={cn("card p-4 transition-opacity", removing && "opacity-40")}>
       <div className="flex items-start gap-3">
         <Link href={`/u/${a.handle}`}>
           <Avatar name={a.displayName} url={a.avatarUrl} size={48} />

@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Uploaded media (HLS segments end in .ts but are video, not TypeScript).
+    "storage/**",
   ]),
 ]);
 

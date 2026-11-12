@@ -3,6 +3,7 @@ import { Play } from "lucide-react";
 import { ClubBadge } from "@/components/ui/brand";
 import { LiveTag, Tag } from "@/components/ui/nav";
 import { cn, formatTime } from "@/lib/format";
+import { VideoThumb } from "@/components/video/thumb";
 
 /* Card patterns borrowed from the UI kit screens, drawn in the Riadha brand. */
 
@@ -30,10 +31,13 @@ export function NewsSlide({
   meta,
   seed,
   stat,
+  poster,
 }: {
   href: string;
   image?: string | null;
   video?: boolean;
+  /** Processed poster for video posts. */
+  poster?: string | null;
   tag?: string;
   title: string;
   meta: React.ReactNode;
@@ -44,10 +48,10 @@ export function NewsSlide({
     <Link href={href} className="relative block aspect-[16/10] overflow-hidden rounded-2xl bg-navy text-white">
       {image ? (
         video ? (
-          <video src={`${image}#t=0.5`} className="absolute inset-0 h-full w-full object-cover" muted playsInline preload="metadata" />
+          <VideoThumb src={image} poster={poster} seed={seed} />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element -- user uploads served from /media
-          <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={image} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
         )
       ) : (
         <StatBackdrop seed={seed} />
@@ -74,15 +78,15 @@ export function NewsSlide({
 }
 
 /** Horizontal highlight card: thumbnail with play button + tag, title and two-line summary. */
-export function HighlightCard({ href, image, video, tag = "Highlights", title, body, seed = 0 }: { href: string; image?: string | null; video?: boolean; tag?: string; title: string; body: string; seed?: number }) {
+export function HighlightCard({ href, image, video, tag = "Highlights", title, body, seed = 0, poster }: { href: string; image?: string | null; video?: boolean; tag?: string; title: string; body: string; seed?: number; poster?: string | null }) {
   return (
     <Link href={href} className="card flex w-[300px] shrink-0 gap-3 overflow-hidden p-2 transition-colors hover:border-gray-400">
       <span className="relative h-24 w-28 shrink-0 overflow-hidden rounded-xl bg-navy">
         {image && !video ? (
           // eslint-disable-next-line @next/next/no-img-element -- user uploads served from /media
-          <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={image} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
         ) : image && video ? (
-          <video src={`${image}#t=0.5`} className="absolute inset-0 h-full w-full object-cover" muted playsInline preload="metadata" />
+          <VideoThumb src={image} poster={poster} seed={seed} />
         ) : (
           <StatBackdrop seed={seed} />
         )}

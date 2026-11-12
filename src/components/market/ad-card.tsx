@@ -47,7 +47,7 @@ export function AdCard({ ad, placement, className }: { ad: ServedAd; placement: 
       <div className="relative aspect-[16/9] w-full overflow-hidden bg-navy-2">
         {ad.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- advertiser uploads served from /media
-          <img src={ad.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
+          <img src={ad.imageUrl} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
         ) : (
           <span className="bg-speed-tile absolute inset-0" />
         )}
@@ -84,7 +84,7 @@ export function AdReel({ ad }: { ad: ServedAd }) {
     <article ref={ref as React.RefObject<HTMLElement>} className="relative h-full w-full overflow-hidden bg-navy text-white" aria-label={`Sponsored: ${ad.business.name}`}>
       {ad.imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- advertiser uploads served from /media
-        <img src={ad.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <img src={ad.imageUrl} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
       ) : (
         <span className="bg-speed-tile absolute inset-0" />
       )}
@@ -123,7 +123,7 @@ export function BusinessLogo({ name, url, size = 40, className }: { name: string
     >
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element -- owner uploads served from /media
-        <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <img src={url} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
       ) : (
         <span aria-hidden>{initials}</span>
       )}

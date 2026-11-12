@@ -2,10 +2,13 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
+  doublePrecision,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
+  type AnyPgColumn,
   primaryKey,
   serial,
   text,
@@ -36,6 +39,16 @@ export const businessCategoryEnum = pgEnum("business_category", [
 ]);
 export const adStatusEnum = pgEnum("ad_status", ["pending", "active", "paused", "rejected", "ended"]);
 export const adEventKindEnum = pgEnum("ad_event_kind", ["impression", "click"]);
+export const videoStatusEnum = pgEnum("video_status", ["uploading", "queued", "processing", "ready", "failed"]);
+export const reportStatusEnum = pgEnum("report_status", ["open", "actioned", "dismissed"]);
+/** private = created by a manager (invite code); club = fans of one KPL club; public = Riadha Overall. */
+export const leagueKindEnum = pgEnum("league_kind", ["private", "club", "public"]);
+export const activitySportEnum = pgEnum("activity_sport", ["run", "walk", "ride"]);
+/** recorded = Riadha's in-app recorder; the rest are files exported from a watch or another app. */
+export const activitySourceEnum = pgEnum("activity_source", ["recorded", "gpx", "tcx", "fit"]);
+/** single = one activity of at least the goal distance (the 5K / 10K challenges); total = distance added up over the window. */
+export const challengeKindEnum = pgEnum("challenge_kind", ["single", "total"]);
+export const challengeStatusEnum = pgEnum("challenge_status", ["pending", "live", "rejected"]);
 
 /* ───────────── Identity & social ───────────── */
 
@@ -76,6 +89,12 @@ export const users = pgTable(
     preferredSide: text("preferred_side"), // "Left" | "Right" | "Both"
     openToOpportunities: boolean("open_to_opportunities").notNull().default(false),
     willingToRelocate: boolean("willing_to_relocate").notNull().default(false),
+    /** Runs show stats only, never the route art (always the case for under-18s). */
+    hideRoutes: boolean("hide_routes").notNull().default(false),
+    notificationPreferences: jsonb("notification_preferences")
+      .$type<Record<string, boolean>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("users_role_idx").on(t.role), index("users_sport_county_idx").on(t.sport, t.county)],
@@ -115,6 +134,65 @@ export const follows = pgTable(
   ],
 );
 
+/** User-facing activity entries. Metadata contains display-safe values only; never secrets or private form bodies. */
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    href: text("href"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("notifications_user_idx").on(t.userId, t.createdAt),
+    index("notifications_unread_idx").on(t.userId, t.readAt, t.createdAt),
+  ],
+);
+
+/**
+ * An uploaded clip and its processing state. Uploads arrive in chunks (uploading), wait for the worker
+ * (queued), get transcoded to HLS renditions (processing) and end up ready or failed. Files live under
+ * storage/videos (see src/lib/video/paths.ts); this row is the source of truth for their state.
+ */
+export const videos = pgTable(
+  "videos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: videoStatusEnum("status").notNull().default("uploading"),
+    originalName: text("original_name"),
+    mimeType: text("mime_type"),
+    sizeBytes: integer("size_bytes").notNull(),
+    receivedBytes: integer("received_bytes").notNull().default(0),
+    /** True when the phone already compressed it to 720p before upload. */
+    clientCompressed: boolean("client_compressed").notNull().default(false),
+    durationMs: integer("duration_ms"),
+    width: integer("width"),
+    height: integer("height"),
+    /** Edit instructions applied by the worker: trim range and the cover frame. */
+    trimStartMs: integer("trim_start_ms"),
+    trimEndMs: integer("trim_end_ms"),
+    coverMs: integer("cover_ms"),
+    /** HLS renditions produced, e.g. {"360p","540p","720p"}. */
+    renditions: text("renditions").array().notNull().default(sql`'{}'::text[]`),
+    attempts: integer("attempts").notNull().default(0),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    processingStartedAt: timestamp("processing_started_at", { withTimezone: true }),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+  },
+  (t) => [index("videos_status_idx").on(t.status, t.createdAt), index("videos_owner_idx").on(t.ownerId)],
+);
+
 export const posts = pgTable(
   "posts",
   {
@@ -123,14 +201,51 @@ export const posts = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     body: text("body").notNull().default(""),
-    mediaUrl: text("media_url"),
+    mediaUrl: text("media_url"), // image file, legacy video file, or an HLS master playlist
     mediaType: text("media_type"), // "image" | "video"
     statLabel: text("stat_label"),
     statValue: text("stat_value"),
     location: text("location"),
+    /** Processed clip behind this post (HLS); mediaUrl/posterUrl are filled in once it is ready. */
+    videoId: uuid("video_id").references(() => videos.id, { onDelete: "set null" }),
+    posterUrl: text("poster_url"),
+    /** False while the clip is still processing; only the author sees unpublished posts. */
+    published: boolean("published").notNull().default(true),
+    /** Set when moderators take the post down; the author still sees it, with the reason. */
+    hiddenAt: timestamp("hidden_at", { withTimezone: true }),
+    hiddenReason: text("hidden_reason"),
+    /**
+     * "post" (a showcase post) or a generated one: "activity" (a run, see activityId), "group_run",
+     * "run_week" (weekly Run League results) or "medal" (a finished challenge). Generated posts keep a
+     * snapshot of what they show in `data`.
+     */
+    kind: text("kind").notNull().default("post"),
+    activityId: integer("activity_id").references((): AnyPgColumn => activities.id, { onDelete: "cascade" }),
+    data: jsonb("data").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("posts_author_idx").on(t.authorId), index("posts_created_idx").on(t.createdAt)],
+  (t) => [index("posts_author_idx").on(t.authorId), index("posts_created_idx").on(t.createdAt), uniqueIndex("posts_activity_idx").on(t.activityId)],
+);
+
+/** Reports from users about posts (moderation queue in /admin/reports). One report per user per post. */
+export const contentReports = pgTable(
+  "content_reports",
+  {
+    id: serial("id").primaryKey(),
+    postId: integer("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    reporterId: uuid("reporter_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(), // see REPORT_REASONS in src/lib/constants.ts
+    note: text("note"),
+    status: reportStatusEnum("status").notNull().default("open"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [uniqueIndex("content_reports_post_reporter_idx").on(t.postId, t.reporterId), index("content_reports_status_idx").on(t.status)],
 );
 
 export const postLikes = pgTable(
@@ -358,9 +473,13 @@ export const leagues = pgTable("leagues", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   code: text("code").notNull().unique(),
-  ownerId: uuid("owner_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+  kind: leagueKindEnum("kind").notNull().default("private"),
+  /** Club leagues only: the KPL club whose fans it gathers (one league per club). */
+  clubId: integer("club_id")
+    .unique()
+    .references(() => kplClubs.id, { onDelete: "cascade" }),
+  /** Null for club and public leagues, which Riadha runs. */
+  ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -374,8 +493,50 @@ export const leagueMembers = pgTable(
       .notNull()
       .references(() => fantasyEntries.id, { onDelete: "cascade" }),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Chat: the newest message this member has seen (drives unread counts) and whether they muted it. */
+    lastReadMessageId: integer("last_read_message_id").notNull().default(0),
+    muted: boolean("muted").notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.leagueId, t.entryId] })],
+);
+
+/**
+ * League chat (private and club leagues). Senders are fantasy entries, so chats show team names only,
+ * never real names. Deleting keeps the row (WhatsApp-style "This message was deleted").
+ */
+export const leagueMessages = pgTable(
+  "league_messages",
+  {
+    id: serial("id").primaryKey(),
+    leagueId: integer("league_id")
+      .notNull()
+      .references(() => leagues.id, { onDelete: "cascade" }),
+    entryId: integer("entry_id")
+      .notNull()
+      .references(() => fantasyEntries.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [index("league_messages_room_idx").on(t.leagueId, t.id)],
+);
+
+/**
+ * Messages the chat filter refused (abuse, phone numbers, card numbers…). Only the kind is kept,
+ * never the text: storing a blocked card number or phone number would defeat the point.
+ */
+export const chatFlags = pgTable(
+  "chat_flags",
+  {
+    id: serial("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    leagueId: integer("league_id").references(() => leagues.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(), // see FilterKind in src/lib/chat/filter.ts
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("chat_flags_user_idx").on(t.userId, t.createdAt)],
 );
 
 /* ───────────── Feed comments ───────────── */
@@ -484,6 +645,11 @@ export const communityEvents = pgTable(
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    /** Group runs: members' runs that start at the meeting point around the start time link up and get a recap post. */
+    isGroupRun: boolean("is_group_run").notNull().default(false),
+    lat: doublePrecision("lat"),
+    lng: doublePrecision("lng"),
+    recapPostId: integer("recap_post_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("community_events_room_idx").on(t.communityId, t.startsAt)],
@@ -499,6 +665,8 @@ export const eventRsvps = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     status: rsvpStatusEnum("status").notNull().default("going"),
+    /** Set when one of the member's runs matched a group run: proof of turnout. */
+    attendedAt: timestamp("attended_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.eventId, t.userId] })],
@@ -581,6 +749,225 @@ export const adEvents = pgTable(
   (t) => [index("ad_events_campaign_kind_idx").on(t.campaignId, t.kind)],
 );
 
+/* ───────────── Riadha Run ───────────── */
+
+/** Shape-only line art of a route (no coordinates): viewBox size and polylines as flat [x,y,x,y…] lists. */
+export type RouteArt = { v: [number, number]; s: number[][] };
+/** Seconds for each full kilometre, plus the last partial stretch as [metres, seconds]. */
+export type Splits = { km: number[]; rest: [number, number] | null };
+
+/**
+ * A run, walk or ride. The public parts are aggregate numbers and the privacy-trimmed route art; the raw
+ * GPS track lives in activity_tracks and is never sent to a browser. `flag` marks activities that failed
+ * the anti-cheat checks: they stay in the athlete's log but never count for leaderboards, PRs or challenges.
+ */
+export const activities = pgTable(
+  "activities",
+  {
+    id: serial("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sport: activitySportEnum("sport").notNull().default("run"),
+    source: activitySourceEnum("source").notNull(),
+    title: text("title").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    distanceM: integer("distance_m").notNull(),
+    movingS: integer("moving_s").notNull(),
+    elapsedS: integer("elapsed_s").notNull(),
+    elevationGainM: integer("elevation_gain_m").notNull().default(0),
+    splits: jsonb("splits").$type<Splits>().notNull(),
+    routeArt: jsonb("route_art").$type<RouteArt>(),
+    /** 60 evenly spaced samples of elevation (m) and pace (s/km) for charts and reels. */
+    profile: jsonb("profile").$type<{ ele: number[]; pace: number[] }>().notNull(),
+    device: text("device"),
+    /** Set by the phone so a retried upload from the offline outbox never saves the run twice. */
+    clientId: text("client_id"),
+    isPrivate: boolean("is_private").notNull().default(false),
+    flag: text("flag"), // "vehicle" | "gps" | "impossible"
+    eventId: integer("event_id").references(() => communityEvents.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("activities_user_idx").on(t.userId, t.startedAt),
+    index("activities_started_idx").on(t.startedAt),
+    index("activities_event_idx").on(t.eventId),
+    uniqueIndex("activities_client_idx").on(t.userId, t.clientId),
+  ],
+);
+
+/** The raw GPS track ([lat, lng, seconds from start, elevation]) and start point. Server-only. */
+export const activityTracks = pgTable("activity_tracks", {
+  activityId: integer("activity_id")
+    .primaryKey()
+    .references(() => activities.id, { onDelete: "cascade" }),
+  points: jsonb("points").$type<[number, number, number, number | null][]>().notNull(),
+  startLat: doublePrecision("start_lat").notNull(),
+  startLng: doublePrecision("start_lng").notNull(),
+});
+
+/** Fastest stretch of each standard distance inside a run (see EFFORTS). `isPr` = a personal record when set. */
+export const bestEfforts = pgTable(
+  "best_efforts",
+  {
+    id: serial("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    activityId: integer("activity_id")
+      .notNull()
+      .references(() => activities.id, { onDelete: "cascade" }),
+    effort: text("effort").notNull(),
+    ms: integer("ms").notNull(),
+    achievedAt: timestamp("achieved_at", { withTimezone: true }).notNull(),
+    isPr: boolean("is_pr").notNull().default(false),
+  },
+  (t) => [index("best_efforts_user_idx").on(t.userId, t.effort, t.ms), index("best_efforts_effort_idx").on(t.effort, t.ms)],
+);
+
+/** One row per runner per week (Monday, Nairobi time): the Run League score, rebuilt after every change. */
+export const runWeeks = pgTable(
+  "run_weeks",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    weekStart: date("week_start").notNull(),
+    activities: integer("activities").notNull().default(0),
+    runM: integer("run_m").notNull().default(0),
+    walkM: integer("walk_m").notNull().default(0),
+    rideM: integer("ride_m").notNull().default(0),
+    activeDays: integer("active_days").notNull().default(0),
+    prs: integer("prs").notNull().default(0),
+    groupRuns: integer("group_runs").notNull().default(0),
+    challenges: integer("challenges").notNull().default(0),
+    beatAverage: boolean("beat_average").notNull().default(false),
+    points: integer("points").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.weekStart] }), index("run_weeks_week_idx").on(t.weekStart, t.points)],
+);
+
+/** Circles (home, school…) cut out of every public route. Private to their owner. */
+export const privacyZones = pgTable(
+  "privacy_zones",
+  {
+    id: serial("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    lat: doublePrecision("lat").notNull(),
+    lng: doublePrecision("lng").notNull(),
+    radiusM: integer("radius_m").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("privacy_zones_user_idx").on(t.userId)],
+);
+
+/**
+ * A challenge: "single" (one run of at least goalM, optionally under maxMs: the 5K / 10K challenges) or
+ * "total" (goalM added up over the window). No end date = always open. Businesses propose sponsored
+ * challenges (pending) and admins approve them.
+ */
+export const challenges = pgTable(
+  "challenges",
+  {
+    id: serial("id").primaryKey(),
+    slug: text("slug").notNull().unique(),
+    title: text("title").notNull(),
+    tagline: text("tagline").notNull().default(""),
+    description: text("description").notNull().default(""),
+    kind: challengeKindEnum("kind").notNull(),
+    sport: activitySportEnum("sport").notNull().default("run"),
+    goalM: integer("goal_m").notNull(),
+    maxMs: integer("max_ms"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    occasion: text("occasion"), // e.g. "Jamhuri Day"
+    cause: text("cause"), // charity challenges: what the kilometres support
+    accent: text("accent").notNull().default("green"), // "green" | "cobalt" | "navy"
+    sponsorId: integer("sponsor_id").references(() => businesses.id, { onDelete: "set null" }),
+    status: challengeStatusEnum("status").notNull().default("live"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    reviewNote: text("review_note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("challenges_status_idx").on(t.status, t.startsAt)],
+);
+
+export const challengeEntries = pgTable(
+  "challenge_entries",
+  {
+    challengeId: integer("challenge_id")
+      .notNull()
+      .references(() => challenges.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+    progressM: integer("progress_m").notNull().default(0),
+    /** Single challenges with a time target: the fastest time over the goal distance. */
+    bestMs: integer("best_ms"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    activityId: integer("activity_id").references(() => activities.id, { onDelete: "set null" }),
+  },
+  (t) => [primaryKey({ columns: [t.challengeId, t.userId] }), index("challenge_entries_user_idx").on(t.userId)],
+);
+
+/**
+ * A time an athlete wants verified (a track race, a road time trial or a GPS run). A verified club confirms
+ * or rejects it; approved times carry the club's name and show up in the Scout Portal.
+ */
+export const timeTrials = pgTable(
+  "time_trials",
+  {
+    id: serial("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    event: text("event").notNull(), // see TRIAL_EVENTS
+    ms: integer("ms").notNull(),
+    date: date("date").notNull(),
+    venue: text("venue").notNull(),
+    note: text("note"),
+    activityId: integer("activity_id").references(() => activities.id, { onDelete: "set null" }),
+    verifierId: uuid("verifier_id").references(() => users.id, { onDelete: "set null" }),
+    status: verificationStatusEnum("status").notNull().default("pending"),
+    reviewNote: text("review_note"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("time_trials_user_idx").on(t.userId), index("time_trials_verifier_idx").on(t.verifierId, t.status), index("time_trials_event_idx").on(t.event, t.status, t.ms)],
+);
+
+/** Generated posts and chat messages already made (weekly results, group-run recaps), so jobs never repeat. */
+export const runDigests = pgTable("run_digests", {
+  key: text("key").primaryKey(),
+  postId: integer("post_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Security and administrative actions, without request secrets or sensitive payloads. */
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: serial("id").primaryKey(),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id"),
+    outcome: text("outcome").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, string | number | boolean | null>>().notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("audit_events_actor_idx").on(t.actorId, t.createdAt),
+    index("audit_events_target_idx").on(t.targetType, t.targetId, t.createdAt),
+    index("audit_events_action_idx").on(t.action, t.createdAt),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
 export type Player = typeof players.$inferSelect;
 export type KplClub = typeof kplClubs.$inferSelect;
@@ -594,3 +981,8 @@ export type BusinessCategory = (typeof businessCategoryEnum.enumValues)[number];
 export type Community = typeof communities.$inferSelect;
 export type Business = typeof businesses.$inferSelect;
 export type AdCampaign = typeof adCampaigns.$inferSelect;
+export type Video = typeof videos.$inferSelect;
+export type Activity = typeof activities.$inferSelect;
+export type ActivitySport = (typeof activitySportEnum.enumValues)[number];
+export type Challenge = typeof challenges.$inferSelect;
+export type TimeTrial = typeof timeTrials.$inferSelect;

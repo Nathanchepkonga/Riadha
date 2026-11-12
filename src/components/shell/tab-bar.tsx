@@ -2,11 +2,39 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Clapperboard, House, Plus, Shirt, UserRound } from "lucide-react";
+import { UNREAD_EVENT } from "@/lib/chat/events";
 import { cn } from "@/lib/format";
 
+/** Unread league-chat messages (muted chats excluded). Refreshed every 30s, on focus, on navigation and when a chat is read. */
+function useChatUnread(path: string) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    let stop = false;
+    const load = () => {
+      if (document.visibilityState !== "visible") return;
+      fetch("/api/fantasy/unread", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : { total: 0 }))
+        .then((d: { total: number }) => !stop && setN(d.total))
+        .catch(() => {});
+    };
+    load();
+    const t = window.setInterval(load, 30_000);
+    document.addEventListener("visibilitychange", load);
+    window.addEventListener(UNREAD_EVENT, load);
+    return () => {
+      stop = true;
+      window.clearInterval(t);
+      document.removeEventListener("visibilitychange", load);
+      window.removeEventListener(UNREAD_EVENT, load);
+    };
+  }, [path]);
+  return n;
+}
+
 const TABS = [
-  { href: "/feed", label: "Home", icon: House, match: (p: string) => p.startsWith("/feed") || p.startsWith("/communities") || p.startsWith("/c/") || p.startsWith("/market") || p.startsWith("/discover") },
+  { href: "/feed", label: "Home", icon: House, match: (p: string) => p.startsWith("/feed") || p.startsWith("/communities") || p.startsWith("/c/") || p.startsWith("/market") || p.startsWith("/discover") || p.startsWith("/run") || p.startsWith("/challenges") },
   { href: "/watch", label: "Watch", icon: Clapperboard, match: (p: string) => p.startsWith("/watch") },
   { href: "/post/new", label: "Post", icon: Plus, match: (p: string) => p.startsWith("/post"), primary: true },
   { href: "/fantasy", label: "Fantasy", icon: Shirt, match: (p: string) => p.startsWith("/fantasy") || p.startsWith("/fixtures") },
@@ -20,6 +48,7 @@ const TABS = [
 export function TabBar({ handle }: { handle: string }) {
   const path = usePathname();
   const active = TABS.findIndex((t) => t.match(path, handle));
+  const unread = useChatUnread(path);
 
   return (
     <nav
@@ -58,7 +87,14 @@ export function TabBar({ handle }: { handle: string }) {
                 </span>
               ) : (
                 <>
-                  <Icon size={22} strokeWidth={on ? 2.4 : 2} className={cn("transition-transform duration-500 ease-[var(--ease-spring)]", on && "-translate-y-0.5 scale-110 text-green")} />
+                  <span className="relative">
+                    <Icon size={22} strokeWidth={on ? 2.4 : 2} className={cn("transition-transform duration-500 ease-[var(--ease-spring)]", on && "-translate-y-0.5 scale-110 text-green")} />
+                    {href === "/fantasy" && unread > 0 && (
+                      <span className="animate-scale-in absolute -right-2.5 -top-1.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-green px-1 text-[10px] font-bold leading-none text-navy ring-2 ring-navy" aria-label={`${unread} unread league message${unread === 1 ? "" : "s"}`}>
+                        {unread > 99 ? "99+" : unread}
+                      </span>
+                    )}
+                  </span>
                   {label}
                 </>
               )}

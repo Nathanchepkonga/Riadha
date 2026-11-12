@@ -19,8 +19,9 @@ export default async function NewPostPage() {
     <div className="px-4 pt-5">
       <p className="kicker">Showcase</p>
       <h1 className="h2 mt-1">Post your highlight</h1>
+      <p className="mt-1 text-[14px] text-muted">Show your sport: training, races, matches, skills and results.</p>
       <div className="mt-6">
-        <Composer statHint={HINTS[user.sport ?? ""] ?? { label: "Stat", value: "Value" }} />
+        <Composer userHandle={user.handle} statHint={HINTS[user.sport ?? ""] ?? { label: "Stat", value: "Value" }} />
       </div>
     </div>
   );

@@ -123,9 +123,10 @@ export function ListRow({ href, icon, label, hint, danger }: { href: string; ico
 }
 
 /** Empty state card. */
-export function EmptyState({ title, body, action }: { title: string; body?: string; action?: React.ReactNode }) {
+export function EmptyState({ title, body, action, icon }: { title: string; body?: string; action?: React.ReactNode; icon?: React.ReactNode }) {
   return (
     <div className="card flex flex-col items-center px-6 py-10 text-center">
+      {icon && <span className="mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-navy text-green">{icon}</span>}
       <p className="h5">{title}</p>
       {body && <p className="mt-1.5 max-w-[34ch] text-[14px] text-muted">{body}</p>}
       {action && <div className="mt-5">{action}</div>}

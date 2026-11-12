@@ -5,9 +5,15 @@ import { ChevronLeft, MapPin, Trash2 } from "lucide-react";
 import { deletePost } from "@/actions/social";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getComments, getPosts } from "@/lib/queries";
-import { formatDate } from "@/lib/format";
+import { postTitle } from "@/lib/posts";
+import { RunPoster } from "@/components/run/run-card";
+import { GeneratedLink, GeneratedPoster } from "@/components/run/posters";
+import { cn, formatDate } from "@/lib/format";
 import { LikeButton, ShareButton } from "@/components/feed/buttons";
 import { CommentThread } from "@/components/feed/comments";
+import { ReportButton } from "@/components/feed/report-button";
+import { InlineVideo } from "@/components/video/inline-video";
+import { ProcessingNotice } from "@/components/video/processing-notice";
 import { StatBackdrop } from "@/components/sport/cards";
 import { Avatar } from "@/components/ui/avatar";
 import { Tag } from "@/components/ui/nav";
@@ -28,8 +34,8 @@ export async function generateMetadata({ params }: PageProps<"/p/[id]">): Promis
   if (!data) return {};
   const { post } = data;
   return {
-    title: `${post.author.displayName}${post.statValue ? ` · ${post.statLabel} ${post.statValue}` : ""}`,
-    description: post.body.slice(0, 160),
+    title: `${post.author.displayName} · ${postTitle(post)}`,
+    description: (post.body || postTitle(post)).slice(0, 160),
   };
 }
 
@@ -40,15 +46,29 @@ export default async function PostPage({ params }: PageProps<"/p/[id]">) {
   const { post, viewer } = data;
   const canDelete = viewer && (viewer.id === post.author.id || viewer.isAdmin);
   const comments = await getComments(post.id);
-  const headline = post.statValue ? `${post.statLabel}: ${post.statValue}` : (post.body.split(/(?<=[.!?])\s/)[0] ?? post.body);
+  const headline = postTitle(post);
+  const run = post.kind === "activity" ? post.activity : null;
+  const generated = post.kind !== "post" && post.kind !== "activity";
+  const posterCard = (!!run || generated) && !(post.mediaType === "video" && post.mediaUrl);
 
   return (
     <>
       {viewer ? <TopBar user={{ handle: viewer.handle, isAdmin: viewer.isAdmin }} back={{ href: "/feed", label: "Back" }} /> : <TopBar user={null} />}
       <main className="pb-tabbar mx-auto max-w-[480px]">
-        <div className="relative aspect-[4/3] w-full overflow-hidden bg-navy">
-          {post.mediaType === "video" && post.mediaUrl ? (
-            <video src={post.mediaUrl} className="absolute inset-0 h-full w-full object-cover" controls playsInline preload="metadata" />
+        {post.hiddenReason && (
+          <p role="status" className="flex items-start gap-2 bg-danger/10 px-4 py-3 text-[13px]">
+            <span className="font-semibold">Hidden from Riadha:</span> {post.hiddenReason}. Only you can see this post.
+          </p>
+        )}
+        <div className={cn("relative w-full overflow-hidden bg-navy", post.mediaType === "video" || posterCard ? "aspect-[4/5]" : "aspect-[4/3]")}>
+          {posterCard && run ? (
+            <RunPoster a={run} />
+          ) : posterCard ? (
+            <GeneratedPoster kind={post.kind} data={post.data} />
+          ) : post.videoId && !post.published ? (
+            <ProcessingNotice videoId={post.videoId} />
+          ) : post.mediaType === "video" && post.mediaUrl ? (
+            <InlineVideo src={post.mediaUrl} poster={post.posterUrl} className="absolute inset-0" />
           ) : post.mediaUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- user uploads served from /media
             <img src={post.mediaUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -72,7 +92,7 @@ export default async function PostPage({ params }: PageProps<"/p/[id]">) {
 
         <article className="px-4 pt-5">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Tag tone="green">{post.author.sport ?? "Showcase"}</Tag>
+            <Tag tone="green">{run || generated ? "Riadha Run" : (post.author.sport ?? "Showcase")}</Tag>
             {post.location && <Tag tone="gray" icon={<MapPin size={10} />} className="normal-case tracking-normal">{post.location}</Tag>}
           </div>
           <h1 className="h3 mt-3">{headline}</h1>
@@ -92,10 +112,18 @@ export default async function PostPage({ params }: PageProps<"/p/[id]">) {
             <span className="text-[13px] font-semibold text-cobalt">Profile</span>
           </Link>
 
-          {post.body && <p className="mt-5 whitespace-pre-line text-[16px] leading-relaxed">{post.body}</p>}
+          {post.body && !generated && <p className="mt-5 whitespace-pre-line text-[16px] leading-relaxed">{post.body}</p>}
+          {run && (
+            <Link href={`/run/a/${run.id}`} className="btn btn-secondary btn-block mt-5">See the splits, best efforts and route</Link>
+          )}
+          {generated && (
+            <div className="mt-3 rounded-xl bg-navy px-4 pb-3 pt-1">
+              <GeneratedLink kind={post.kind} data={post.data} />
+            </div>
+          )}
 
           <div className="mt-6 flex items-center gap-4 rounded-2xl bg-navy p-3">
-            <LikeButton postId={post.id} liked={post.liked} likes={post.likes} signedIn={!!viewer} />
+            <LikeButton postId={post.id} liked={post.liked} likes={post.likes} signedIn={!!viewer} pongezi={post.kind !== "post"} />
             <ShareButton path={`/p/${post.id}`} title={`${post.author.displayName} on Riadha`} />
             {canDelete && (
               <form action={deletePost.bind(null, post.id)} className="ml-auto">
@@ -105,6 +133,11 @@ export default async function PostPage({ params }: PageProps<"/p/[id]">) {
               </form>
             )}
           </div>
+          {viewer && viewer.id !== post.author.id && (
+            <div className="mt-3 flex justify-end">
+              <ReportButton postId={post.id} />
+            </div>
+          )}
 
           <section className="mt-8" aria-labelledby="comments-title">
             <h2 id="comments-title" className="h5">

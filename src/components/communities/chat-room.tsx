@@ -106,9 +106,9 @@ export function ChatRoom({ communityId, initial, viewer }: { communityId: number
     setMessages((m) => [...m, temp]);
     haptic();
     burst(sendBtn.current, { count: 6, spread: 34 });
-    const res = await sendMessage(communityId, body).catch(() => ({ error: "Not sent. Check your connection." }));
-    if ("error" in res) {
-      setError(res.error);
+    const res = await sendMessage(communityId, body).catch(() => ({ error: "Not sent. Check your connection." }) as const);
+    if ("error" in res || "blocked" in res) {
+      setError("error" in res ? res.error : res.blocked.notice);
       setText(body);
       setMessages((m) => m.filter((x) => x.id !== temp.id));
       return;

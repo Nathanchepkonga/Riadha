@@ -112,8 +112,9 @@ export async function getEntry(userId: string) {
 
 /** Everything the "My XI" screen needs. */
 export async function getManagerHome(userId: string) {
+  const now = new Date();
   const [next, current, entry] = await Promise.all([getNextGameweek(db), getCurrentGameweek(db), getEntry(userId)]);
-  if (!entry) return { next, current, entry: null };
+  if (!entry) return { next, current, entry: null, deadlineSoon: false };
 
   const picks = next ? await ensurePicksFor(db, entry.id, next.id) : (await getEffectivePicks(db, entry.id, current?.id ?? 1)).picks;
   const [transfer, summary, gwRow, gwAvg] = await Promise.all([
@@ -126,7 +127,8 @@ export async function getManagerHome(userId: string) {
       ? db.select({ avg: sql<number>`coalesce(round(avg(${entryGameweeks.points})),0)::int`, top: sql<number>`coalesce(max(${entryGameweeks.points}),0)::int` }).from(entryGameweeks).where(eq(entryGameweeks.gameweekId, current.id)).then((r) => r[0])
       : null,
   ]);
-  return { next, current, entry, picks, transfer, summary, gwRow, gwAvg };
+  const deadlineSoon = !!next && next.deadline.getTime() > now.getTime() && next.deadline.getTime() - now.getTime() <= 24 * 60 * 60 * 1000;
+  return { next, current, entry, picks, transfer, summary, gwRow, gwAvg, deadlineSoon };
 }
 
 export async function getOverallRank(entryId: number) {

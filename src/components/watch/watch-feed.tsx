@@ -13,9 +13,11 @@ import { cn, compact, timeAgo } from "@/lib/format";
 import { LogoMark } from "@/components/brand/logo";
 import { ShareButton } from "@/components/feed/buttons";
 import { CommentButton } from "@/components/feed/comments";
+import { ReportButton } from "@/components/feed/report-button";
 import { AdReel } from "@/components/market/ad-card";
 import { StatBackdrop } from "@/components/sport/cards";
 import { Avatar } from "@/components/ui/avatar";
+import { HlsVideo } from "@/components/video/player";
 import { Tick } from "@/components/ui/tick";
 
 type Viewer = { id: string; isAdmin: boolean };
@@ -217,14 +219,17 @@ function Reel({ post, active, near, muted, viewer }: { post: FeedPost; active: b
     <article className="relative h-full w-full overflow-hidden" aria-label={`Reel by ${post.author.displayName}`} onClick={onTap}>
       {/* Media */}
       {isVideo ? (
-        <video
+        <HlsVideo
           ref={video}
           src={post.mediaUrl!}
+          poster={post.posterUrl ?? undefined}
+          load={near}
+          active={active}
           className="absolute inset-0 h-full w-full object-cover"
           playsInline
           loop
           muted
-          preload={near ? "auto" : "metadata"}
+          preload={near ? "auto" : "none"}
           onTimeUpdate={(e) => {
             const v = e.currentTarget;
             if (progress.current && v.duration) progress.current.style.transform = `scaleX(${v.currentTime / v.duration})`;
@@ -232,7 +237,13 @@ function Reel({ post, active, near, muted, viewer }: { post: FeedPost; active: b
         />
       ) : post.mediaUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- user uploads served from /media
-        <img src={post.mediaUrl} alt="" className={cn("absolute inset-0 h-full w-full object-cover transition-transform duration-[9000ms] ease-out", active ? "scale-110" : "scale-100")} />
+        <img
+          src={post.mediaUrl}
+          alt=""
+          loading={near ? "eager" : "lazy"}
+          decoding="async"
+          className={cn("absolute inset-0 h-full w-full object-cover transition-transform duration-[9000ms] ease-out", active ? "scale-110" : "scale-100")}
+        />
       ) : (
         <>
           <StatBackdrop seed={post.id} />
@@ -304,6 +315,7 @@ function Reel({ post, active, near, muted, viewer }: { post: FeedPost; active: b
         </button>
         <CommentButton postId={post.id} postAuthorId={post.author.id} count={post.comments} viewer={viewer} />
         <ShareButton path={`/p/${post.id}`} title={`${post.author.displayName} on Riadha`} />
+        {post.author.id !== viewer.id && <ReportButton postId={post.id} variant="rail" />}
       </div>
 
       {/* Caption */}
@@ -324,6 +336,11 @@ function Reel({ post, active, near, muted, viewer }: { post: FeedPost; active: b
             <span className="rounded-md bg-green px-2 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-navy">
               {post.statLabel} · {post.statValue}
             </span>
+          )}
+          {post.activity && (
+            <Link href={`/run/a/${post.activity.id}`} className="rounded-md bg-green px-2 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-navy">
+              {post.activity.title} · {(post.activity.distanceM / 1000).toFixed(1)} km
+            </Link>
           )}
           {post.location && (
             <span className="inline-flex items-center gap-1 rounded-md bg-white/12 px-2 py-1 text-[11px] backdrop-blur">

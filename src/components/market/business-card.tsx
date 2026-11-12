@@ -39,7 +39,7 @@ export function BusinessCover({ b, className }: { b: Pick<Business, "name" | "co
     return (
       <div className={cn("relative overflow-hidden bg-navy", className)}>
         {/* eslint-disable-next-line @next/next/no-img-element -- owner uploads served from /media */}
-        <img src={b.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
+        <img src={b.coverUrl} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
       </div>
     );
   }
@@ -65,7 +65,7 @@ export const ksh = (n: number) => `KSh ${n.toLocaleString("en-KE")}`;
 /** Marketplace listing card. */
 export function BusinessCard({ b }: { b: Business }) {
   return (
-    <Link href={`/market/${b.slug}`} data-reveal="up" className="card pressable group block overflow-hidden">
+    <Link href={`/market/${b.slug}`} data-reveal="up" suppressHydrationWarning className="card pressable group block overflow-hidden">
       <BusinessCover b={b} className="aspect-[16/8]" />
       <div className="relative px-4 pb-4">
         <BusinessLogo name={b.name} url={b.logoUrl} size={48} className="-mt-6 ring-4 ring-surface" />

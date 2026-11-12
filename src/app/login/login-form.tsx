@@ -5,13 +5,14 @@ import { confirmOtp, requestOtp, type OtpState } from "@/actions/auth";
 import { maskPhone } from "@/lib/auth/phone";
 import { SubmitButton } from "@/components/ui/forms";
 
-export function LoginForm({ next }: { next?: string }) {
-  const [sent, send] = useActionState<OtpState, FormData>(requestOtp, { step: "phone" });
+export function LoginForm({ next, intent }: { next?: string; intent?: string }) {
+  const [sent, send] = useActionState<OtpState, FormData>(requestOtp, { step: "phone", intent });
   const [checked, check] = useActionState<OtpState, FormData>(confirmOtp, { step: "phone" });
 
   if (sent.step === "phone") {
     return (
       <form action={send} className="flex flex-col gap-4">
+        {intent && <input type="hidden" name="intent" value={intent} />}
         <label className="label" htmlFor="phone">
           Phone number
         </label>
@@ -42,6 +43,7 @@ export function LoginForm({ next }: { next?: string }) {
     <form action={check} className="flex flex-col gap-4">
       <input type="hidden" name="phone" value={sent.phone} />
       {next && <input type="hidden" name="next" value={next} />}
+      {sent.intent && <input type="hidden" name="intent" value={sent.intent} />}
       <label className="label" htmlFor="code">
         Code sent to {maskPhone(sent.phone)}
       </label>

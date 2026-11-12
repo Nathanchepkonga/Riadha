@@ -85,20 +85,20 @@ export default async function BusinessPage({ params }: PageProps<"/market/[slug]
 
         <dl className="mt-6 grid grid-cols-2 gap-2" data-stagger="80">
           {b.priceFrom !== null && (
-            <div data-reveal="up" className="rounded-2xl bg-navy p-4 text-white">
+            <div data-reveal="up" suppressHydrationWarning className="rounded-2xl bg-navy p-4 text-white">
               <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55"><Wallet size={13} /> From</dt>
               <dd className="mt-1 text-[24px] font-bold tracking-[-0.03em]">{ksh(b.priceFrom)}</dd>
             </div>
           )}
           {b.hours && (
-            <div data-reveal="up" className="rounded-2xl border border-line bg-surface p-4">
+            <div data-reveal="up" suppressHydrationWarning className="rounded-2xl border border-line bg-surface p-4">
               <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted"><Clock size={13} /> Hours</dt>
               <dd className="mt-1 text-[15px] font-semibold leading-snug">{b.hours}</dd>
             </div>
           )}
         </dl>
 
-        <section className="mt-6" data-reveal="up">
+        <section className="mt-6" data-reveal="up" suppressHydrationWarning>
           <h2 className="h5">About</h2>
           <p className="mt-2 whitespace-pre-line text-[15px] leading-relaxed text-ink/90">{b.description}</p>
         </section>
@@ -108,7 +108,7 @@ export default async function BusinessPage({ params }: PageProps<"/market/[slug]
             <h2 className="h5">Amenities</h2>
             <ul className="mt-3 grid grid-cols-2 gap-2" data-stagger="40">
               {b.amenities.map((a) => (
-                <li key={a} data-reveal="up" className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] font-medium">
+                <li key={a} data-reveal="up" suppressHydrationWarning className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] font-medium">
                   <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-green text-navy"><Check size={12} strokeWidth={3} /></span>
                   {a}
                 </li>

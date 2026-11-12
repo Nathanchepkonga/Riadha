@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronLeft, Eye, Megaphone, MousePointerClick, Pencil, Percent, Plus } from "lucide-react";
+import { desc, inArray } from "drizzle-orm";
+import { ChevronLeft, Eye, Flag, Megaphone, MousePointerClick, Pencil, Percent, Plus } from "lucide-react";
+import { proposeChallenge } from "@/actions/running";
+import { db } from "@/db";
+import { challenges } from "@/db/schema";
 import { requireUser } from "@/lib/auth/session";
 import { campaignStats } from "@/lib/ads";
 import { campaignsForOwner, myBusinesses } from "@/lib/market";
@@ -11,6 +15,9 @@ import { BusinessLogo } from "@/components/market/ad-card";
 import { VerifiedBusiness } from "@/components/market/business-card";
 import { CampaignControls, ListingToggle } from "@/components/market/campaign-controls";
 import { CountUp } from "@/components/motion/count-up";
+import { ChallengeForm } from "@/components/run/challenge-form";
+import { goalText } from "@/components/run/challenge-card";
+import { Medal } from "@/components/run/medal";
 
 export const metadata: Metadata = { title: "Manage business" };
 
@@ -26,7 +33,10 @@ export default async function ManagePage({ searchParams }: PageProps<"/market/ma
   const user = await requireUser();
   const submitted = (await searchParams).submitted === "1";
   const [biz, campaigns] = await Promise.all([myBusinesses(user.id), campaignsForOwner(user.id)]);
-  const stats = await campaignStats(campaigns.map((c) => c.campaign.id));
+  const [stats, sponsored] = await Promise.all([
+    campaignStats(campaigns.map((c) => c.campaign.id)),
+    biz.length ? db.select().from(challenges).where(inArray(challenges.sponsorId, biz.map((b) => b.id))).orderBy(desc(challenges.createdAt)) : Promise.resolve([]),
+  ]);
   const totals = [...stats.values()].reduce((t, s) => ({ impressions: t.impressions + s.impressions, clicks: t.clicks + s.clicks }), { impressions: 0, clicks: 0 });
   const ctr = totals.impressions ? (totals.clicks / totals.impressions) * 100 : 0;
 
@@ -55,7 +65,7 @@ export default async function ManagePage({ searchParams }: PageProps<"/market/ma
               ].map(([Icon, label, n, unit], i) => {
                 const I = Icon as typeof Eye;
                 return (
-                  <div key={label as string} data-reveal="up" className={cn("rounded-2xl p-3", i === 0 ? "bg-navy text-white" : "border border-line bg-surface")}>
+                  <div key={label as string} data-reveal="up" suppressHydrationWarning className={cn("rounded-2xl p-3", i === 0 ? "bg-navy text-white" : "border border-line bg-surface")}>
                     <dt className={cn("flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em]", i === 0 ? "text-white/55" : "text-muted")}>
                       <I size={12} /> {label as string}
                     </dt>
@@ -113,7 +123,7 @@ export default async function ManagePage({ searchParams }: PageProps<"/market/ma
                   const rate = s.impressions ? ((s.clicks / s.impressions) * 100).toFixed(1) : "0.0";
                   const audience = [c.targetRoles.length ? c.targetRoles.join(", ") : "everyone", c.targetSports.length ? c.targetSports.join(", ") : null, c.targetCounties.length ? `${c.targetCounties.length} count${c.targetCounties.length === 1 ? "y" : "ies"}` : "all Kenya", c.minAge || c.maxAge ? `ages ${c.minAge ?? 13}–${c.maxAge ?? "99"}` : null].filter(Boolean).join(" · ");
                   return (
-                    <li key={c.id} data-reveal="up" className="card overflow-hidden">
+                    <li key={c.id} data-reveal="up" suppressHydrationWarning className="card overflow-hidden">
                       <div className="flex gap-3 p-3">
                         <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-navy">
                           {c.imageUrl ? (
@@ -146,6 +156,34 @@ export default async function ManagePage({ searchParams }: PageProps<"/market/ma
                 })}
               </ul>
             )}
+          </section>
+
+          <section className="mt-8">
+            <h2 className="h5 flex items-center gap-2"><Flag size={18} /> Sponsored challenges</h2>
+            <p className="mt-1 text-[13px] text-muted">Put your name on a running challenge: a monthly 10K, a 100 km month, a run for a cause. Runners see your listing on the challenge and its medal.</p>
+            {sponsored.length > 0 && (
+              <ul className="mt-3 flex flex-col gap-2">
+                {sponsored.map((c) => (
+                  <li key={c.id} className="card flex items-center gap-3 p-3">
+                    <Medal goalM={c.goalM} accent={c.accent} size={36} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">{c.title}</span>
+                      <span className="block truncate text-[12px] text-muted">{goalText(c)}</span>
+                      {c.status === "rejected" && c.reviewNote && <span className="block text-[12px] text-danger">Not approved: {c.reviewNote}</span>}
+                    </span>
+                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", c.status === "live" ? STATUS.active : STATUS[c.status])}>{c.status}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {biz.map((b) => (
+              <details key={b.id} className="card mt-3 overflow-hidden">
+                <summary className="cursor-pointer px-4 py-3 text-[14px] font-semibold">Propose a challenge as {b.name}</summary>
+                <div className="border-t border-line p-4">
+                  <ChallengeForm action={proposeChallenge.bind(null, b.id)} submitLabel="Send for review" />
+                </div>
+              </details>
+            ))}
           </section>
         </>
       )}

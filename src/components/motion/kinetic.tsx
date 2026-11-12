@@ -20,7 +20,7 @@ export function KineticText({
   let i = 0;
   const parts = text.split(/(\*[^*]+\*)/g).filter(Boolean);
   return (
-    <Tag className={cn("kinetic", className)} data-reveal="kinetic" style={{ "--reveal-delay": `${delay}ms` } as React.CSSProperties} aria-label={text.replace(/\*/g, "")}>
+    <Tag className={cn("kinetic", className)} data-reveal="kinetic" suppressHydrationWarning style={{ "--reveal-delay": `${delay}ms` } as React.CSSProperties} aria-label={text.replace(/\*/g, "")}>
       {parts.map((part, p) => {
         const hot = part.startsWith("*");
         const words = (hot ? part.slice(1, -1) : part).split(/(\s+)/);

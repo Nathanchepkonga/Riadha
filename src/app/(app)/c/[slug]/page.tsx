@@ -16,8 +16,12 @@ import { CommunityCover } from "@/components/communities/community-art";
 import { CommunityForm } from "@/components/communities/forms";
 import { JoinButton } from "@/components/communities/join-button";
 import { MemberMenu } from "@/components/communities/member-menu";
+import { RUN_CATEGORIES } from "@/lib/running/constants";
+import { weekDistance } from "@/lib/running/format";
+import { leagueTable } from "@/lib/running/queries";
+import { weekStartOf } from "@/lib/running/track";
 
-type Tab = "chat" | "events" | "members" | "about";
+type Tab = "chat" | "events" | "run" | "members" | "about";
 
 export async function generateMetadata({ params }: PageProps<"/c/[slug]">): Promise<Metadata> {
   const user = await requireUser();
@@ -34,10 +38,12 @@ export default async function CommunityPage({ params, searchParams }: PageProps<
   const member = !!role;
   const manager = role === "owner" || role === "admin" || user.isAdmin;
   const raw = (await searchParams).tab;
-  const tab: Tab = raw === "chat" || raw === "events" || raw === "members" || raw === "about" ? raw : member ? "chat" : "about";
+  const running = RUN_CATEGORIES.includes(c.category);
+  const tab: Tab = raw === "chat" || raw === "events" || raw === "members" || raw === "about" || (raw === "run" && running) ? raw : member ? "chat" : "about";
   const tabs: { key: Tab; label: string }[] = [
     { key: "chat", label: "Chat" },
     { key: "events", label: "Events" },
+    ...(running ? [{ key: "run" as const, label: "Run league" }] : []),
     { key: "members", label: `Members ${compact(members)}` },
     { key: "about", label: "About" },
   ];
@@ -85,6 +91,7 @@ export default async function CommunityPage({ params, searchParams }: PageProps<
               <EmptyState title="Members-only chat" body="Join to read and post in the group chat." action={<JoinButton communityId={c.id} joined={false} />} />
             ))}
           {tab === "events" && <EventsTab slug={c.slug} communityId={c.id} manager={manager} viewerId={user.id} />}
+          {tab === "run" && <RunTab communityId={c.id} viewerId={user.id} />}
           {tab === "members" && <MembersTab communityId={c.id} manager={manager} viewerRole={role === "owner" ? "owner" : role === "admin" ? "admin" : user.isAdmin ? "site" : null} viewerId={user.id} />}
           {tab === "about" && (
             <div className="flex flex-col gap-6">
@@ -133,7 +140,7 @@ async function EventsTab({ slug, communityId, manager, viewerId }: { slug: strin
       {upcoming.length === 0 && <EmptyState title="No upcoming events" body={manager ? "Plan the next run, match or meet-up." : "Check back soon."} />}
       <div className="flex flex-col gap-3" data-stagger="60">
         {upcoming.map(({ event: e, going, myStatus }) => (
-          <Link key={e.id} href={`/c/${slug}/events/${e.id}`} data-reveal="up" className="card pressable flex gap-3 p-3">
+          <Link key={e.id} href={`/c/${slug}/events/${e.id}`} data-reveal="up" suppressHydrationWarning className="card pressable flex gap-3 p-3">
             <span className="grid w-14 shrink-0 place-items-center rounded-xl bg-navy py-2 text-center text-white">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-green">{formatDate(e.startsAt, { month: "short" })}</span>
               <span className="text-[22px] font-bold leading-none">{formatDate(e.startsAt, { day: "numeric" })}</span>
@@ -195,5 +202,31 @@ async function MembersTab({ communityId, manager, viewerRole, viewerId }: { comm
         </li>
       ))}
     </ul>
+  );
+}
+
+/** This week's Run League among the community's members (the full table lives in Riadha Run). */
+async function RunTab({ communityId, viewerId }: { communityId: number; viewerId: string }) {
+  const t = await leagueTable({ weekStart: weekStartOf(new Date()), scope: "crew", order: "points", viewerId, communityId, limit: 20 });
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[13px] text-muted">This week&apos;s points among members. The podium is posted in the chat every Monday.</p>
+      {t.rows.length === 0 ? (
+        <EmptyState title="No runs this week yet" body="Record or upload a run to get the table going." action={<Link href="/run/record" className="btn btn-accent">Record a run</Link>} />
+      ) : (
+        <ol className="card divide-y divide-line/70 overflow-hidden">
+          {t.rows.map((r) => (
+            <li key={r.user.id} className={r.user.id === viewerId ? "flex items-center gap-3 bg-green/25 px-4 py-2.5" : "flex items-center gap-3 px-4 py-2.5"}>
+              <span className="w-5 text-[14px] font-bold tabular">{r.rank}</span>
+              <Avatar name={r.user.displayName} url={r.user.avatarUrl} size={30} />
+              <Link href={`/u/${r.user.handle}`} className="min-w-0 flex-1 truncate text-[14px] font-semibold">{r.user.displayName}</Link>
+              <span className="text-[12px] text-muted tabular">{weekDistance(r.w)}</span>
+              <span className="w-12 text-right text-[14px] font-bold tabular">{r.w.points}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      <Link href={`/run/leagues?scope=crew-${communityId}`} className="text-[13px] font-semibold text-cobalt">Full table and past weeks →</Link>
+    </div>
   );
 }

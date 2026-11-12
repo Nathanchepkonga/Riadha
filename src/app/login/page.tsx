@@ -12,7 +12,7 @@ export const viewport: Viewport = { themeColor: "#081018" };
 
 /** Welcome screen (UI kit pattern): brand hero on top, sign-in sheet below. */
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  const { next } = await searchParams;
+  const { next, intent } = await searchParams;
   const user = await getCurrentUser();
   if (user) redirect(user.onboarded ? "/feed" : "/onboarding");
 
@@ -34,7 +34,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         <h1 className="h3">Welcome to Riadha</h1>
         <p className="mt-1.5 text-[14px] text-muted">Sign in or create an account with your phone number. No password needed.</p>
         <div className="mt-6">
-          <LoginForm next={typeof next === "string" ? next : undefined} />
+          <LoginForm next={typeof next === "string" ? next : undefined} intent={typeof intent === "string" ? intent : undefined} />
         </div>
       </section>
     </main>

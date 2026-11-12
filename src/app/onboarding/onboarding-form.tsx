@@ -15,15 +15,15 @@ const ROLES: { value: Role; title: string; blurb: string }[] = [
   { value: "scout", title: "Scout", blurb: "Find and follow talent." },
 ];
 
-export function OnboardingForm({ clubs, defaultName, next }: { clubs: { id: number; name: string }[]; defaultName: string; next?: string }) {
+export function OnboardingForm({ clubs, defaultName, defaultRole = "fan", next }: { clubs: { id: number; name: string }[]; defaultName: string; defaultRole?: Role; next?: string }) {
   const [state, action] = useActionState(completeOnboarding, undefined);
-  const [role, setRole] = useState<Role>("fan");
+  const [role, setRole] = useState<Role>(defaultRole);
 
   return (
     <form action={action} className="flex flex-col gap-6">
       {next && <input type="hidden" name="next" value={next} />}
-      <fieldset>
-        <legend className="label">I&apos;m joining as</legend>
+      <fieldset aria-describedby="role-help">
+        <legend className="label">What brings you here?</legend>
         <div className="grid grid-cols-2 gap-3">
           {ROLES.map((r) => (
             <label
@@ -41,6 +41,7 @@ export function OnboardingForm({ clubs, defaultName, next }: { clubs: { id: numb
             </label>
           ))}
         </div>
+        <p id="role-help" className="mt-3 text-[12px] text-muted">You can still use every part of Riadha. This only sets your starting point.</p>
         {role !== "fan" && (
           <p className="mt-3 text-[13px] text-muted">
             You can request your {role === "athlete" ? "blue" : role === "club" ? "green" : "grey"} tick from your profile after sign-up.
@@ -56,8 +57,9 @@ export function OnboardingForm({ clubs, defaultName, next }: { clubs: { id: numb
         <label className="label" htmlFor="handle">Handle</label>
         <div className="relative">
           <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted">@</span>
-          <input id="handle" name="handle" required pattern="[A-Za-z0-9_]{3,20}" className="field pl-8" placeholder="faithchebet" autoCapitalize="none" />
+            <input id="handle" name="handle" required pattern="[A-Za-z0-9_]{3,20}" aria-describedby="handle-help" className="field pl-8" placeholder="faithchebet" autoCapitalize="none" />
         </div>
+          <p id="handle-help" className="mt-2 text-[13px] text-muted">3–20 letters, numbers or underscores. This becomes your public profile link.</p>
       </div>
 
       {(role === "athlete" || role === "club") && (
@@ -71,8 +73,8 @@ export function OnboardingForm({ clubs, defaultName, next }: { clubs: { id: numb
       {role === "athlete" && (
         <div>
           <label className="label" htmlFor="dateOfBirth">Date of birth</label>
-          <input id="dateOfBirth" name="dateOfBirth" type="date" required className="field" />
-          <p className="mt-2 text-[13px] text-muted">Under 18? Scouts can see your public stats, but contact requests go to your guardian and club.</p>
+          <input id="dateOfBirth" name="dateOfBirth" type="date" required aria-describedby="dob-help" className="field" />
+          <p id="dob-help" className="mt-2 text-[13px] text-muted">Under 18? Scouts can see your public stats, but contact requests go to your guardian and club.</p>
         </div>
       )}
       <div>

@@ -37,7 +37,7 @@ export default async function AdsAdmin() {
               <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-navy">
                 {c.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element -- advertiser uploads
-                  <img src={c.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                  <img src={c.imageUrl} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
                 ) : (
                   <span className="bg-speed-tile absolute inset-0" />
                 )}

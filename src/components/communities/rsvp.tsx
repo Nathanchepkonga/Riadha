@@ -52,7 +52,8 @@ export function RsvpControl({ eventId, status, going, interested, capacity, past
           </div>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-2">
+      <fieldset className="grid grid-cols-2 gap-2">
+        <legend className="sr-only">Your response to this event</legend>
         <button
           type="button"
           disabled={pending || full}
@@ -65,16 +66,16 @@ export function RsvpControl({ eventId, status, going, interested, capacity, past
         <button type="button" disabled={pending} aria-pressed={mine === "interested"} onClick={() => choose("interested")} className={cn("btn", mine === "interested" ? "btn-cobalt" : "btn-secondary")}>
           <Star size={16} fill={mine === "interested" ? "currentColor" : "none"} /> Interested
         </button>
-      </div>
+      </fieldset>
       {mine && (
         <button type="button" disabled={pending} onClick={() => choose(null)} className="mt-2 inline-flex items-center gap-1 text-[13px] font-semibold text-muted hover:text-ink">
           <X size={14} /> Can&apos;t make it
         </button>
       )}
-      <p className="mt-2 text-[12px] text-muted">
+      <p className="mt-2 text-[12px] text-muted" aria-live="polite">
         {counts.going} going · {counts.interested} interested
       </p>
-      {error && <p role="alert" className="mt-2 text-[13px] text-danger">{error}</p>}
+      {error && <p role="alert" aria-live="assertive" className="mt-2 text-[13px] text-danger">{error}</p>}
     </div>
   );
 }

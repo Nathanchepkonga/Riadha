@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeftRight, ChevronRight, Trophy, Users } from "lucide-react";
 import { requireUser } from "@/lib/auth/session";
+import { unreadTotal } from "@/lib/fantasy/chat";
 import { getGameweekFixtures, getManagerHome, getPlayerPool } from "@/lib/fantasy/data";
 import { SCORING_TABLE } from "@/lib/fantasy/scoring";
 import { countdown, formatKickoff } from "@/lib/format";
@@ -9,6 +10,7 @@ import { CountUp } from "@/components/motion/count-up";
 import { ClubBadge } from "@/components/ui/brand";
 import { SectionHeader } from "@/components/ui/nav";
 import { LineupEditor, type LitePlayer } from "@/components/fantasy/lineup-editor";
+import { createNotificationOnce } from "@/lib/notifications";
 
 export const metadata: Metadata = { title: "Fantasy" };
 
@@ -17,6 +19,16 @@ export default async function FantasyPage({ searchParams }: PageProps<"/fantasy"
   const sp = await searchParams;
   const home = await getManagerHome(user.id);
   const { next, current, entry } = home;
+
+  if (entry && next && home.deadlineSoon) {
+    await createNotificationOnce({
+      userId: user.id,
+      kind: "fantasy_deadline",
+      title: `GW${next.id} deadline is tomorrow`,
+      body: `Set your lineup before ${formatKickoff(next.deadline)}.`,
+      href: "/fantasy/squad",
+    });
+  }
 
   if (!entry) {
     return (
@@ -58,7 +70,7 @@ export default async function FantasyPage({ searchParams }: PageProps<"/fantasy"
     );
   }
 
-  const [pool, fixtures] = await Promise.all([getPlayerPool(), next ? getGameweekFixtures(next.id) : []]);
+  const [pool, fixtures, unread] = await Promise.all([getPlayerPool(), next ? getGameweekFixtures(next.id) : [], unreadTotal(user.id)]);
   const ids = new Set(home.picks!.map((p) => p.playerId));
   const players: Record<number, LitePlayer> = {};
   for (const p of pool) if (ids.has(p.id)) players[p.id] = p;
@@ -104,8 +116,13 @@ export default async function FantasyPage({ searchParams }: PageProps<"/fantasy"
         <Link href="/fantasy/squad" className="card flex items-center justify-center gap-1.5 py-3 transition-colors hover:border-gray-400">
           <ArrowLeftRight size={16} /> Transfers
         </Link>
-        <Link href="/fantasy/leagues" className="card flex items-center justify-center gap-1.5 py-3 transition-colors hover:border-gray-400">
+        <Link href="/fantasy/leagues" className="card relative flex items-center justify-center gap-1.5 py-3 transition-colors hover:border-gray-400">
           <Users size={16} /> Leagues
+          {unread > 0 && (
+            <span className="absolute -right-1 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-green px-1.5 text-[11px] font-bold text-navy ring-2 ring-bg" aria-label={`${unread} unread league message${unread === 1 ? "" : "s"}`}>
+              {unread > 99 ? "99+" : unread}
+            </span>
+          )}
         </Link>
       </nav>
       {next && home.transfer && (

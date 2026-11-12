@@ -11,6 +11,7 @@ import { cn } from "@/lib/format";
  * Uncontrolled by default so it works inside plain GET forms.
  */
 export function SearchField({
+  id,
   name = "q",
   defaultValue = "",
   placeholder = "Search",
@@ -20,6 +21,7 @@ export function SearchField({
   disabled,
   autoFocus,
 }: {
+  id?: string;
   name?: string;
   defaultValue?: string;
   placeholder?: string;
@@ -41,6 +43,7 @@ export function SearchField({
     <div className={cn("relative", className)}>
       <Search size={17} className={cn("pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2", disabled ? "text-subtle" : "text-muted")} aria-hidden />
       <input
+        id={id}
         ref={input}
         type="search"
         name={name}

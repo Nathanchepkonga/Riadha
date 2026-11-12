@@ -5,6 +5,8 @@ import { requireUser } from "@/lib/auth/session";
 import { canScout } from "@/lib/roles";
 import { popularSkills, searchTalent, shortlistCounts, talentByCounty, type TalentFilters } from "@/lib/scout";
 import { COUNTIES, SPORTS } from "@/lib/constants";
+import { TRIAL_EVENTS } from "@/lib/running/constants";
+import { parseRaceTime } from "@/lib/running/format";
 import { cn } from "@/lib/format";
 import { PageHero } from "@/components/ui/page-hero";
 import { SearchField } from "@/components/ui/controls";
@@ -18,6 +20,7 @@ const SORTS = [
   { value: "youngest", label: "Youngest first" },
   { value: "followers", label: "Most followed" },
   { value: "newest", label: "Newest on Riadha" },
+  { value: "fastest", label: "Fastest time (pick an event)" },
 ] as const;
 
 const STAGES = [
@@ -53,10 +56,13 @@ export default async function ScoutPage({ searchParams }: PageProps<"/scout">) {
     openOnly: sp.open === "1",
     relocateOnly: sp.relocate === "1",
     videoOnly: sp.video === "1",
+    event: TRIAL_EVENTS.some((e) => e.key === sp.event) ? (sp.event as string) : undefined,
+    underMs: parseRaceTime(str(sp.under) ?? "") ?? undefined,
+    verifiedTimesOnly: sp.vtimes === "1",
     sort: SORTS.some((s) => s.value === sp.sort) ? (sp.sort as TalentFilters["sort"]) : "relevance",
   };
-  const filtered = !!(filters.q || filters.sport || filters.county || filters.position || filters.minAge || filters.maxAge || filters.skills?.length || filters.verifiedOnly || filters.openOnly || filters.relocateOnly || filters.videoOnly);
-  const activeCount = [filters.sport, filters.county, filters.position, filters.minAge, filters.maxAge, filters.verifiedOnly, filters.openOnly, filters.relocateOnly, filters.videoOnly].filter(Boolean).length + (filters.skills?.length ?? 0);
+  const filtered = !!(filters.q || filters.sport || filters.county || filters.position || filters.minAge || filters.maxAge || filters.skills?.length || filters.verifiedOnly || filters.openOnly || filters.relocateOnly || filters.videoOnly || filters.event);
+  const activeCount = [filters.sport, filters.county, filters.position, filters.minAge, filters.maxAge, filters.verifiedOnly, filters.openOnly, filters.relocateOnly, filters.videoOnly, filters.event].filter(Boolean).length + (filters.skills?.length ?? 0);
 
   const [talent, skills, counts, counties] = await Promise.all([searchTalent(filters, user.id), popularSkills(filters.sport), shortlistCounts(user.id), talentByCounty(8)]);
   const shortlisted = Object.values(counts).reduce((a, b) => a + (b ?? 0), 0);
@@ -122,6 +128,24 @@ export default async function ScoutPage({ searchParams }: PageProps<"/scout">) {
               <span className="label">Age to</span>
               <input name="maxAge" type="number" inputMode="numeric" min={8} max={60} defaultValue={filters.maxAge ?? ""} placeholder="23" className="field" />
             </label>
+            <fieldset className="col-span-2 grid grid-cols-2 gap-3 rounded-xl border border-line p-3">
+              <legend className="label px-1">Running times</legend>
+              <label>
+                <span className="label">Event</span>
+                <select name="event" defaultValue={filters.event ?? ""} className="field">
+                  <option value="">Any</option>
+                  {TRIAL_EVENTS.map((e) => <option key={e.key} value={e.key}>{e.label}</option>)}
+                </select>
+              </label>
+              <label>
+                <span className="label">Faster than</span>
+                <input name="under" defaultValue={typeof sp.under === "string" ? sp.under : ""} placeholder="16:30" maxLength={10} className="field tabular" />
+              </label>
+              <label className="col-span-2 flex cursor-pointer items-center gap-2 text-[13px] font-medium">
+                <input type="checkbox" name="vtimes" value="1" defaultChecked={filters.verifiedTimesOnly} className="h-4 w-4 accent-[#081018]" />
+                Club-verified times only (otherwise GPS bests count too)
+              </label>
+            </fieldset>
             {skills.length > 0 && (
               <fieldset className="col-span-2">
                 <legend className="label">Skills</legend>
@@ -168,7 +192,7 @@ export default async function ScoutPage({ searchParams }: PageProps<"/scout">) {
           <p className="kicker">Talent across Kenya</p>
           <div className="no-scrollbar -mx-4 mt-2 flex gap-2 overflow-x-auto px-4" data-stagger="50">
             {counties.map((c) => (
-              <Link key={c.county} data-reveal="right" href={`/scout?county=${encodeURIComponent(c.county!)}`} className="pressable inline-flex shrink-0 items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold hover:border-gray-400">
+              <Link key={c.county} data-reveal="right" suppressHydrationWarning href={`/scout?county=${encodeURIComponent(c.county!)}`} className="pressable inline-flex shrink-0 items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold hover:border-gray-400">
                 {c.county} <span className="rounded-full bg-gray-100 px-1.5 text-[11px] tabular text-muted">{c.n}</span>
               </Link>
             ))}

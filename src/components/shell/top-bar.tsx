@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { ChevronLeft, Search } from "lucide-react";
+import { Bell, ChevronLeft, Search } from "lucide-react";
+import { getCurrentUser } from "@/lib/auth/session";
+import { unreadNotifications } from "@/lib/notifications";
 import { Logo } from "@/components/brand/logo";
 import { AutoHideHeader } from "./auto-hide";
 import { MenuButton, type MenuUser } from "./menu";
@@ -19,6 +21,7 @@ export function TopBar({ user, back }: { user: MenuUser; back?: { href: string; 
           </Link>
         )}
         <div className="flex items-center gap-1">
+          {user && <NotificationLink />}
           <Link href="/discover" aria-label="Search" className="pressable grid h-10 w-10 place-items-center rounded-full text-ink hover:bg-gray-200">
             <Search size={20} strokeWidth={2.2} />
           </Link>
@@ -28,5 +31,16 @@ export function TopBar({ user, back }: { user: MenuUser; back?: { href: string; 
       {/* hairline glow along the bottom edge */}
       <span aria-hidden className="pointer-events-none absolute inset-x-0 -bottom-px h-px bg-[linear-gradient(90deg,transparent,rgba(141,214,58,.55),rgba(56,103,255,.45),transparent)] opacity-0 transition-opacity duration-500 group-data-[raised]/header:opacity-100" />
     </AutoHideHeader>
+  );
+}
+
+async function NotificationLink() {
+  const current = await getCurrentUser();
+  const unread = current ? await unreadNotifications(current.id) : 0;
+  return (
+    <Link href="/me/notifications" aria-label={unread ? `${unread} unread notifications` : "Notifications"} className="pressable relative grid h-10 w-10 place-items-center rounded-full text-ink hover:bg-gray-200">
+      <Bell size={20} strokeWidth={2.2} />
+      {unread > 0 && <span aria-hidden className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-cobalt ring-2 ring-offwhite" />}
+    </Link>
   );
 }

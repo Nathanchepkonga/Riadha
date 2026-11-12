@@ -1,0 +1,36 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgres://ci:ci@localhost:5432/riadha
+      SESSION_SECRET: ci-only-session-secret-that-is-at-least-32-characters
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      OTP_DEV_MODE: "true"
+      VIDEO_WORKER: "off"
+      RUN_JOBS: "off"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build

@@ -2,6 +2,7 @@ import "server-only";
 import { and, arrayOverlaps, asc, desc, eq, exists, gte, ilike, inArray, isNotNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { athleteStats, posts, scoutBookmarks, users, type ScoutStage } from "@/db/schema";
+import { bestTimes, verifiedTimes } from "@/lib/running/queries";
 
 export type TalentFilters = {
   q?: string;
@@ -15,8 +16,14 @@ export type TalentFilters = {
   openOnly?: boolean;
   relocateOnly?: boolean;
   videoOnly?: boolean;
-  sort?: "relevance" | "youngest" | "followers" | "newest";
+  /** Running times: an event (TRIAL_EVENTS key), an optional "faster than" and whether only club-verified times count. */
+  event?: string;
+  underMs?: number;
+  verifiedTimesOnly?: boolean;
+  sort?: "relevance" | "youngest" | "followers" | "newest" | "fastest";
 };
+
+export type TalentTime = { event: string; ms: number; verified: boolean; club?: string | null };
 
 /** Date of birth bounds for an age range, relative to today. */
 function dobBounds(minAge?: number, maxAge?: number) {
@@ -58,6 +65,12 @@ export async function searchTalent(f: TalentFilters, scoutId: string, limit = 40
   if (bornOnOrBefore || bornAfter) where.push(isNotNull(users.dateOfBirth));
   if (bornOnOrBefore) where.push(lte(users.dateOfBirth, bornOnOrBefore));
   if (bornAfter) where.push(gte(users.dateOfBirth, bornAfter));
+  // Times: verified by a club, plus GPS bests unless the scout wants verified only.
+  const times = f.event ? await bestTimes(f.event, { verifiedOnly: f.verifiedTimesOnly }) : null;
+  if (times) {
+    const ids = [...times].filter(([, t]) => !f.underMs || t.ms <= f.underMs).map(([id]) => id);
+    where.push(ids.length ? inArray(users.id, ids) : sql`false`);
+  }
 
   const order =
     f.sort === "youngest" ? [desc(users.dateOfBirth)]
@@ -88,15 +101,29 @@ export async function searchTalent(f: TalentFilters, scoutId: string, limit = 40
     .from(users)
     .where(and(...where))
     .orderBy(...order)
-    .limit(limit);
+    .limit(times && f.sort === "fastest" ? 300 : limit);
+  if (times && f.sort === "fastest") {
+    rows.sort((a, b) => (times.get(a.id)?.ms ?? Infinity) - (times.get(b.id)?.ms ?? Infinity));
+    rows.splice(limit);
+  }
 
   const ids = rows.map((r) => r.id);
+  const verified = await verifiedTimes(ids);
+  const timeFor = (id: string): TalentTime | null => {
+    if (times && f.event) {
+      const t = times.get(id);
+      const club = verified.find((v) => v.t.userId === id && v.t.event === f.event)?.club?.displayName;
+      return t ? { event: f.event, ms: t.ms, verified: t.verified, club } : null;
+    }
+    const v = verified.find((x) => x.t.userId === id);
+    return v ? { event: v.t.event, ms: v.t.ms, verified: true, club: v.club?.displayName } : null;
+  };
   const stats = ids.length
     ? await db.select().from(athleteStats).where(inArray(athleteStats.userId, ids)).orderBy(asc(athleteStats.sortOrder), asc(athleteStats.id))
     : [];
   const byUser = new Map<string, typeof stats>();
   for (const s of stats) byUser.set(s.userId, [...(byUser.get(s.userId) ?? []), s]);
-  return rows.map((r) => ({ ...r, stats: (byUser.get(r.id) ?? []).slice(0, 2) }));
+  return rows.map((r) => ({ ...r, stats: (byUser.get(r.id) ?? []).slice(0, 2), time: timeFor(r.id) }));
 }
 
 export type Talent = Awaited<ReturnType<typeof searchTalent>>[number];

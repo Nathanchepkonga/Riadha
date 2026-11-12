@@ -12,7 +12,7 @@ import { cn } from "@/lib/format";
 
 export type MenuUser = { handle: string; isAdmin: boolean; canScout?: boolean } | null;
 
-type NavLink = { href: string; label: string; hint?: string };
+type NavLink = { href: string; label: string; hint?: string; section?: string };
 
 function linksFor(user: MenuUser): NavLink[] {
   if (!user) {
@@ -23,16 +23,21 @@ function linksFor(user: MenuUser): NavLink[] {
     ];
   }
   return [
-    { href: "/feed", label: "Home", hint: "Feed" },
-    { href: "/watch", label: "Watch", hint: "Reels" },
-    { href: "/fantasy", label: "Fantasy", hint: "KPL" },
-    { href: "/fixtures", label: "Fixtures" },
-    { href: "/communities", label: "Communities", hint: "Clubs & crews" },
-    { href: "/market", label: "Marketplace", hint: "Gyms, kit, physios" },
-    ...(user.canScout ? [{ href: "/scout", label: "Scout portal", hint: "Find talent" }] : []),
-    { href: "/discover", label: "Discover" },
-    { href: `/u/${user.handle}`, label: "My profile" },
-    ...(user.isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
+    { href: "/feed", label: "Home", hint: "Feed", section: "Your sport" },
+    { href: "/watch", label: "Watch", hint: "Reels", section: "Your sport" },
+    { href: "/fantasy", label: "Fantasy", hint: "KPL", section: "Your sport" },
+    { href: "/fixtures", label: "Fixtures", section: "Your sport" },
+    { href: `/u/${user.handle}`, label: "My profile", section: "Your progress" },
+    { href: "/run", label: "Riadha Run", hint: "Record, leagues", section: "Your progress" },
+    { href: "/challenges", label: "Challenges", hint: "5K, 10K, medals", section: "Your progress" },
+    { href: "/me/notifications", label: "Notifications", section: "Your progress" },
+    { href: "/me/inbox", label: "Messages", section: "Your progress" },
+    { href: "/me/settings", label: "Data & media", hint: "Saver", section: "Your progress" },
+    { href: "/communities", label: "Communities", hint: "Clubs & crews", section: "Your community" },
+    { href: "/market", label: "Marketplace", hint: "Gyms, kit, physios", section: "Your community" },
+    { href: "/discover", label: "Discover", section: "Your community" },
+    ...(user.canScout ? [{ href: "/scout", label: "Scout portal", hint: "Find talent", section: "Professional tools" }] : []),
+    ...(user.isAdmin ? [{ href: "/admin", label: "Admin", section: "Professional tools" }] : []),
   ];
 }
 
@@ -103,28 +108,23 @@ function MenuOverlay({ id, user, pathname, onClose }: { id: string; user: MenuUs
           <nav aria-label="Main" className="mt-10 flex flex-col">
             {links.map((l, i) => {
               const current = isCurrent(l.href);
+              const previous = links[i - 1];
               return (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  // Same-page links don't change the route, so close explicitly.
-                  onClick={onClose}
-                  aria-current={current ? "page" : undefined}
-                  className="animate-fade-slide-right group flex items-baseline gap-4 border-b border-white/[.07] py-2.5"
-                  style={{ animationDelay: `${80 + i * 45}ms` }}
-                >
-                  <span className={cn("w-6 text-[11px] font-semibold tabular tracking-[0.14em]", current ? "text-green" : "text-white/35")}>{String(i + 1).padStart(2, "0")}</span>
-                  <span
-                    className={cn(
-                      "text-[clamp(24px,7.4vw,30px)] font-bold leading-[1.1] tracking-[-0.03em] transition-[color,transform] duration-300 group-hover:translate-x-1.5",
-                      current ? "text-mark" : "text-white group-hover:text-green",
-                    )}
+                <div key={l.href}>
+                  {l.section !== previous?.section && <p className="mb-2 mt-7 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40 first:mt-0">{l.section}</p>}
+                  <Link
+                    href={l.href}
+                    onClick={onClose}
+                    aria-current={current ? "page" : undefined}
+                    className="animate-fade-slide-right group flex items-baseline gap-4 border-b border-white/[.07] py-2.5"
+                    style={{ animationDelay: `${80 + i * 45}ms` }}
                   >
-                    {l.label}
-                  </span>
-                  {l.hint && <span className="ml-auto hidden text-[12px] text-white/40 min-[380px]:inline">{l.hint}</span>}
-                  <ArrowUpRight size={16} className="ml-auto shrink-0 self-center text-white/30 opacity-0 transition-opacity group-hover:opacity-100 min-[380px]:ml-0" />
-                </Link>
+                    <span className={cn("w-6 text-[11px] font-semibold tabular tracking-[0.14em]", current ? "text-green" : "text-white/35")}>{String(i + 1).padStart(2, "0")}</span>
+                    <span className={cn("text-[clamp(24px,7.4vw,30px)] font-bold leading-[1.1] tracking-[-0.03em] transition-[color,transform] duration-300 group-hover:translate-x-1.5", current ? "text-mark" : "text-white group-hover:text-green")}>{l.label}</span>
+                    {l.hint && <span className="ml-auto hidden text-[12px] text-white/40 min-[380px]:inline">{l.hint}</span>}
+                    <ArrowUpRight size={16} className="ml-auto shrink-0 self-center text-white/30 opacity-0 transition-opacity group-hover:opacity-100 min-[380px]:ml-0" />
+                  </Link>
+                </div>
               );
             })}
           </nav>

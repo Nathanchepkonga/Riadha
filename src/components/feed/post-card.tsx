@@ -4,19 +4,32 @@ import { Avatar } from "@/components/ui/avatar";
 import { Tag } from "@/components/ui/nav";
 import { Tick } from "@/components/ui/tick";
 import { StatBackdrop } from "@/components/sport/cards";
+import { RunPoster } from "@/components/run/run-card";
+import { GeneratedLink, GeneratedPoster } from "@/components/run/posters";
 import type { FeedPost } from "@/lib/queries";
 import { cn, timeAgo } from "@/lib/format";
+import { km } from "@/lib/running/format";
+import { InlineVideo } from "@/components/video/inline-video";
 import { LikeButton, ShareButton } from "./buttons";
 import { CommentButton } from "./comments";
 
 /** Full-bleed post card: media (or a navy stat poster), author + stat tag over a soft floor blur. */
 export function PostCard({ post, signedIn, priority, viewer }: { post: FeedPost; signedIn: boolean; priority?: boolean; viewer?: { id: string; isAdmin: boolean } }) {
   const hasMedia = !!post.mediaUrl;
+  const video = post.mediaType === "video" && !!post.mediaUrl;
+  const run = post.kind === "activity" && post.activity ? post.activity : null;
+  const generated = post.kind !== "post" && post.kind !== "activity";
+  // Runs and Riadha's own posters carry their words in the artwork, so the floor blur stays low.
+  const poster = (!!run && !video) || (generated && !video);
   return (
     <article className="relative overflow-hidden rounded-3xl bg-navy" aria-label={`Post by ${post.author.displayName}`}>
       <div className="relative aspect-[4/5] w-full">
-        {post.mediaType === "video" && post.mediaUrl ? (
-          <video src={post.mediaUrl} className="absolute inset-0 h-full w-full object-cover" controls playsInline muted loop preload="metadata" />
+        {video ? (
+          <InlineVideo src={post.mediaUrl!} poster={post.posterUrl} className="absolute inset-0" />
+        ) : run ? (
+          <RunPoster a={run} />
+        ) : generated ? (
+          <GeneratedPoster kind={post.kind} data={post.data} />
         ) : hasMedia ? (
           // eslint-disable-next-line @next/next/no-img-element -- user uploads served from /media
           <img src={post.mediaUrl!} alt="" loading={priority ? "eager" : "lazy"} className="absolute inset-0 h-full w-full object-cover" />
@@ -34,11 +47,11 @@ export function PostCard({ post, signedIn, priority, viewer }: { post: FeedPost;
           </>
         )}
 
-        <div className="floor-blur pointer-events-none absolute inset-x-0 bottom-0 h-3/5" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-navy/90 via-navy/40 to-transparent" />
+        {!poster && <div className="floor-blur pointer-events-none absolute inset-x-0 bottom-0 h-3/5" />}
+        <div className={cn("pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-navy/90 via-navy/40 to-transparent", poster ? "h-1/4" : "h-3/5")} />
 
         <div className="absolute bottom-20 right-3 z-10 flex flex-col gap-3">
-          <LikeButton postId={post.id} liked={post.liked} likes={post.likes} signedIn={signedIn} />
+          <LikeButton postId={post.id} liked={post.liked} likes={post.likes} signedIn={signedIn} pongezi={post.kind !== "post"} />
           <CommentButton postId={post.id} postAuthorId={post.author.id} count={post.comments} viewer={viewer ?? null} />
           <ShareButton path={`/p/${post.id}`} title={`${post.author.displayName} on Riadha`} />
         </div>
@@ -50,21 +63,29 @@ export function PostCard({ post, signedIn, priority, viewer }: { post: FeedPost;
             <Tick role={post.author.role} verified={post.author.verified} size={15} />
             <span className="text-xs font-normal text-white/60">· {timeAgo(post.createdAt)}</span>
           </Link>
-          {(post.statValue || post.location) && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {post.statValue && hasMedia && (
-                <Tag tone="green">
-                  {post.statLabel} · {post.statValue}
-                </Tag>
-              )}
-              {post.location && (
-                <Tag tone="glass" icon={<MapPin size={10} />} className="normal-case tracking-normal">
-                  {post.location}
-                </Tag>
-              )}
-            </div>
+          {run ? (
+            <Link href={`/run/a/${run.id}`} className="mt-2 inline-flex items-center gap-1 text-[13px] font-semibold text-green">
+              {video ? `${run.title} · ${km(run.distanceM)} km` : "View run, splits and PRs"} →
+            </Link>
+          ) : generated ? (
+            <GeneratedLink kind={post.kind} data={post.data} />
+          ) : (
+            (post.statValue || post.location) && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {post.statValue && hasMedia && (
+                  <Tag tone="green">
+                    {post.statLabel} · {post.statValue}
+                  </Tag>
+                )}
+                {post.location && (
+                  <Tag tone="glass" icon={<MapPin size={10} />} className="normal-case tracking-normal">
+                    {post.location}
+                  </Tag>
+                )}
+              </div>
+            )
           )}
-          {post.body && (hasMedia || post.statValue) && (
+          {post.body && !generated && (hasMedia || post.statValue || run) && (
             <Link href={`/p/${post.id}`} className="mt-2 line-clamp-3 block text-[14px] leading-snug text-white/90">
               {post.body}
             </Link>

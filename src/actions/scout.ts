@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { scoutBookmarks, scoutStageEnum, users } from "@/db/schema";
 import { actionUser } from "@/lib/auth/session";
 import { canScout } from "@/lib/roles";
+import { createNotification } from "@/lib/notifications";
 
 async function scout() {
   const user = await actionUser();
@@ -22,9 +23,17 @@ export async function toggleBookmark(athleteId: string) {
     .where(and(eq(scoutBookmarks.scoutId, me.id), eq(scoutBookmarks.athleteId, athleteId)))
     .returning();
   if (removed.length === 0) {
-    const [athlete] = await db.select({ role: users.role }).from(users).where(eq(users.id, athleteId));
+    const [athlete] = await db.select({ id: users.id, role: users.role, handle: users.handle }).from(users).where(eq(users.id, athleteId));
     if (athlete?.role !== "athlete") throw new Error("Only athletes can be shortlisted.");
     await db.insert(scoutBookmarks).values({ scoutId: me.id, athleteId }).onConflictDoNothing();
+    await createNotification({
+      userId: athlete.id,
+      actorId: me.id,
+      kind: "scouting_shortlist",
+      title: "Your profile was saved for scouting",
+      body: "A club or scout added your profile to their shortlist.",
+      href: `/u/${athlete.handle}`,
+    });
   }
   revalidatePath("/scout/shortlist");
   return removed.length === 0;

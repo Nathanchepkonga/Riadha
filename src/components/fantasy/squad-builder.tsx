@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Search, Shuffle } from "lucide-react";
+import { Search, Shuffle, X } from "lucide-react";
 import { createEntry, makeTransfers } from "@/actions/fantasy";
 import { Shirt } from "@/components/ui/brand";
 import { CloseButton, Sheet } from "@/components/ui/overlay";
@@ -266,6 +266,8 @@ function PlayerPicker({
   onClose: () => void;
 }) {
   const [q, setQ] = useState("");
+  // The search box stays closed until asked for, so the phone keyboard doesn't cover the player list.
+  const [searching, setSearching] = useState(false);
   const [club, setClub] = useState("");
   const [sort, setSort] = useState<"points" | "price" | "cheap">("points");
   const [affordable, setAffordable] = useState(false);
@@ -281,15 +283,48 @@ function PlayerPicker({
   return (
     <Sheet title={`Pick a ${POSITION_LABEL[pos].toLowerCase()}`} onClose={onClose} tall>
       <div className="border-b border-line p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <p className="text-xl font-semibold tracking-tight">Pick a {POSITION_LABEL[pos].toLowerCase()}</p>
-          <CloseButton onClick={onClose} />
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setSearching(true)}
+              aria-label="Search players"
+              aria-expanded={searching}
+              className={cn("grid h-9 w-9 place-items-center rounded-full transition-colors", searching ? "bg-navy text-white" : "bg-gray-100 text-ink hover:bg-gray-200")}
+            >
+              <Search size={17} />
+            </button>
+            <CloseButton onClick={onClose} />
+          </div>
         </div>
         <p className="mt-1 text-sm text-muted">Bank {formatPrice(bank)} · max {MAX_PER_CLUB} per club</p>
-        <div className="relative mt-3">
-          <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search players" className="field h-11 pl-10" data-autofocus aria-label="Search players" />
-        </div>
+        {searching && (
+          <div className="animate-fade-in relative mt-3">
+            <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search players"
+              className="field h-11 pl-10 pr-10"
+              aria-label="Search players"
+              enterKeyHint="search"
+              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setQ("");
+                setSearching(false);
+              }}
+              aria-label="Close search"
+              className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted hover:bg-gray-100 hover:text-ink"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
         <div className="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2">
           <select value={club} onChange={(e) => setClub(e.target.value)} className="field h-10 text-sm" aria-label="Club">
             <option value="">All clubs</option>

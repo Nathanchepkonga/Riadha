@@ -1,8 +1,8 @@
 import "server-only";
-import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db";
-import { athleteStats, fixtures, follows, kplClubs, postComments, posts, users } from "@/db/schema";
+import { activities, athleteStats, businesses, challenges, communities, communityEvents, fixtures, follows, kplClubs, postComments, posts, users } from "@/db/schema";
 
 export type FeedPost = Awaited<ReturnType<typeof getPosts>>[number];
 
@@ -35,6 +35,10 @@ export async function getPosts(opts: {
   }
   if (opts.authorId) where.push(eq(posts.authorId, opts.authorId));
   if (opts.postId) where.push(eq(posts.id, opts.postId));
+  // Clips still processing and posts taken down by moderators are hidden from everyone but their author,
+  // who sees them on their own profile and post page with a status.
+  const visible = and(eq(posts.published, true), isNull(posts.hiddenAt))!;
+  where.push(opts.mode === "author" || opts.postId ? or(visible, eq(posts.authorId, viewer))! : visible);
   if (opts.sport) where.push(eq(users.sport, opts.sport));
   if (opts.mediaOnly) where.push(or(isNotNull(posts.mediaUrl), isNotNull(posts.statValue))!);
 
@@ -42,6 +46,7 @@ export async function getPosts(opts: {
   const forYouScore = sql`(case when ${users.verified} then 12 else 0 end)
     + (case when ${posts.statValue} is not null then 8 else 0 end)
     + (case when ${posts.mediaUrl} is not null then 6 else 0 end)
+    + (case when ${posts.kind} <> 'post' then 6 else 0 end)
     + least(${likeCount}, 40) * 0.3
     - extract(epoch from (now() - ${posts.createdAt})) / 21600`;
   const order = opts.mode === "forYou" ? desc(forYouScore)
@@ -54,10 +59,29 @@ export async function getPosts(opts: {
       body: posts.body,
       mediaUrl: posts.mediaUrl,
       mediaType: posts.mediaType,
+      posterUrl: posts.posterUrl,
+      videoId: posts.videoId,
+      published: posts.published,
+      hiddenReason: sql<string | null>`case when ${posts.hiddenAt} is not null then coalesce(${posts.hiddenReason}, 'Removed by moderators') end`,
       statLabel: posts.statLabel,
       statValue: posts.statValue,
       location: posts.location,
       createdAt: posts.createdAt,
+      kind: posts.kind,
+      data: posts.data,
+      // Runs: the public numbers and privacy-trimmed route art only (never the track).
+      activity: {
+        id: activities.id,
+        sport: activities.sport,
+        title: activities.title,
+        startedAt: activities.startedAt,
+        distanceM: activities.distanceM,
+        movingS: activities.movingS,
+        elevationGainM: activities.elevationGainM,
+        splits: activities.splits,
+        routeArt: activities.routeArt,
+        flag: activities.flag,
+      },
       likes: likeCount,
       comments: commentCount,
       liked: sql<boolean>`exists(select 1 from post_likes pl where pl.post_id = ${posts.id} and pl.user_id = ${viewer})`,
@@ -74,6 +98,7 @@ export async function getPosts(opts: {
     })
     .from(posts)
     .innerJoin(users, eq(users.id, posts.authorId))
+    .leftJoin(activities, eq(activities.id, posts.activityId))
     .where(where.length ? and(...where) : undefined)
     .orderBy(order, desc(posts.id))
     .limit(opts.limit ?? 30)
@@ -160,11 +185,11 @@ export async function searchPeople(opts: { q?: string; sport?: string; role?: "a
       position: users.position,
       county: users.county,
       dateOfBirth: users.dateOfBirth,
-      followers: sql<number>`(select count(*)::int from follows f where f.followee_id = "users"."id")`,
+      followers: sql<number>`(select count(*)::int from follows f where f.followee_id = "users"."id")`.as("followers"),
     })
     .from(users)
     .where(and(...where))
-    .orderBy(desc(users.verified), desc(sql`(select count(*) from follows f where f.followee_id = ${users.id})`))
+    .orderBy(desc(users.verified), desc(sql`followers`))
     .limit(opts.limit ?? 40);
   const ids = rows.map((r) => r.id);
   const topStats = ids.length
@@ -176,4 +201,55 @@ export async function searchPeople(opts: { q?: string; sport?: string; role?: "a
     : [];
   const statBy = new Map(topStats.map((s) => [s.userId, s]));
   return rows.map((r) => ({ ...r, topStat: statBy.get(r.id) ?? null }));
+}
+
+export async function searchDiscover(q: string) {
+  const term = q.replace(/[%_]/g, "").trim();
+  if (!term) return { communities: [], businesses: [], challenges: [], posts: [], fixtures: [], events: [] };
+  const like = `%${term}%`;
+  const home = alias(kplClubs, "search_home");
+  const away = alias(kplClubs, "search_away");
+  const [communityRows, businessRows, challengeRows, postRows, fixtureRows, eventRows] = await Promise.all([
+    db
+      .select({ id: communities.id, slug: communities.slug, name: communities.name, description: communities.description, category: communities.category, county: communities.county, coverUrl: communities.coverUrl })
+      .from(communities)
+      .where(or(ilike(communities.name, like), ilike(communities.description, like), ilike(communities.category, like), ilike(communities.county, like))!)
+      .orderBy(desc(communities.createdAt))
+      .limit(8),
+    db
+      .select({ id: businesses.id, slug: businesses.slug, name: businesses.name, description: businesses.description, category: businesses.category, county: businesses.county, logoUrl: businesses.logoUrl, verified: businesses.verified })
+      .from(businesses)
+      .where(and(eq(businesses.active, true), or(ilike(businesses.name, like), ilike(businesses.description, like), sql`${businesses.category}::text ilike ${like}`, ilike(businesses.county, like))!))
+      .orderBy(desc(businesses.verified), desc(businesses.createdAt))
+      .limit(8),
+    db
+      .select({ id: challenges.id, slug: challenges.slug, title: challenges.title, tagline: challenges.tagline, kind: challenges.kind, endsAt: challenges.endsAt })
+      .from(challenges)
+      .where(and(eq(challenges.status, "live"), or(ilike(challenges.title, like), ilike(challenges.tagline, like), ilike(challenges.description, like), ilike(challenges.occasion, like))!))
+      .orderBy(desc(challenges.startsAt))
+      .limit(8),
+    db
+      .select({ id: posts.id, body: posts.body, kind: posts.kind, author: { handle: users.handle, displayName: users.displayName } })
+      .from(posts)
+      .innerJoin(users, eq(users.id, posts.authorId))
+      .where(and(eq(posts.published, true), isNull(posts.hiddenAt), or(ilike(posts.body, like), ilike(posts.location, like), ilike(posts.statLabel, like))!))
+      .orderBy(desc(posts.createdAt))
+      .limit(8),
+    db
+      .select({ id: fixtures.id, gameweekId: fixtures.gameweekId, kickoff: fixtures.kickoff, home: { name: home.name, shortName: home.shortName }, away: { name: away.name, shortName: away.shortName } })
+      .from(fixtures)
+      .innerJoin(home, eq(home.id, fixtures.homeClubId))
+      .innerJoin(away, eq(away.id, fixtures.awayClubId))
+      .where(or(ilike(home.name, like), ilike(home.shortName, like), ilike(away.name, like), ilike(away.shortName, like))!)
+      .orderBy(asc(fixtures.kickoff))
+      .limit(8),
+    db
+      .select({ id: communityEvents.id, title: communityEvents.title, location: communityEvents.location, startsAt: communityEvents.startsAt, slug: communities.slug, communityName: communities.name })
+      .from(communityEvents)
+      .innerJoin(communities, eq(communities.id, communityEvents.communityId))
+      .where(or(ilike(communityEvents.title, like), ilike(communityEvents.description, like), ilike(communityEvents.location, like), ilike(communities.name, like))!)
+      .orderBy(asc(communityEvents.startsAt))
+      .limit(8),
+  ]);
+  return { communities: communityRows, businesses: businessRows, challenges: challengeRows, posts: postRows, fixtures: fixtureRows, events: eventRows };
 }

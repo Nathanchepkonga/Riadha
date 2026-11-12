@@ -102,7 +102,7 @@ export default function StyleGuide() {
         </Marquee>
         <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4" data-stagger="80">
           {["up", "blur", "slant", "wipe"].map((r) => (
-            <div key={r} data-reveal={r} className="card grid h-24 place-items-center text-[13px] font-semibold">
+            <div key={r} data-reveal={r} suppressHydrationWarning className="card grid h-24 place-items-center text-[13px] font-semibold">
               data-reveal=&quot;{r}&quot;
             </div>
           ))}

@@ -10,17 +10,25 @@ import { getNextFixtureForClub, getPosts, getProfile, type FeedPost } from "@/li
 import { canScout } from "@/lib/roles";
 import { isBookmarked } from "@/lib/scout";
 import { BookmarkButton } from "@/components/scout/bookmark-button";
+import { VideoThumb } from "@/components/video/thumb";
 import { ageFrom, cn, formatDate, formatTime } from "@/lib/format";
 import { ClubBadge } from "@/components/ui/brand";
 import { AppIcon } from "@/components/brand/logo";
 import { StatBackdrop } from "@/components/sport/cards";
 import { Tick } from "@/components/ui/tick";
 import { CountUp } from "@/components/motion/count-up";
-import { FollowButton } from "@/components/feed/buttons";
+import { FollowButton, ShareButton } from "@/components/feed/buttons";
 import { ContactForm } from "@/components/profile/contact-form";
 import { Silhouette } from "@/components/profile/silhouette";
 import { MenuButton } from "@/components/shell/menu";
 import { TabBar } from "@/components/shell/tab-bar";
+import { ActivityRow } from "@/components/run/activity-row";
+import { RunThumb } from "@/components/run/run-card";
+import { Medal } from "@/components/run/medal";
+import { trialLabel } from "@/lib/running/constants";
+import { km, raceTime } from "@/lib/running/format";
+import { profileRunning } from "@/lib/running/queries";
+import { EFFORTS } from "@/lib/running/track";
 
 export async function generateMetadata({ params }: PageProps<"/u/[handle]">): Promise<Metadata> {
   const profile = await getProfile((await params).handle);
@@ -39,7 +47,7 @@ export default async function ProfilePage({ params }: PageProps<"/u/[handle]">) 
   if (!profile) notFound();
 
   const { user, club, followers, following, isFollowing, stats } = profile;
-  const [posts, nextFx, fantasy, inbox] = await Promise.all([
+  const [posts, nextFx, fantasy, inbox, running] = await Promise.all([
     getPosts({ viewerId: viewer?.id, mode: "author", authorId: user.id, limit: 12 }),
     club ? getNextFixtureForClub(club.id) : null,
     db
@@ -52,6 +60,7 @@ export default async function ProfilePage({ params }: PageProps<"/u/[handle]">) 
     viewer?.id === user.id
       ? db.select({ n: sql<number>`count(*)::int` }).from(contactRequests).where(eq(contactRequests.athleteId, user.id)).then((r) => r[0].n)
       : 0,
+    profileRunning(user.id, viewer?.id === user.id),
   ]);
 
   const own = viewer?.id === user.id;
@@ -78,7 +87,10 @@ export default async function ProfilePage({ params }: PageProps<"/u/[handle]">) 
       <section className="relative isolate mx-auto h-[min(780px,100svh)] min-h-[620px] max-w-[480px] overflow-hidden bg-offwhite text-navy">
         <header className="absolute inset-x-0 top-0 z-40 flex items-center justify-between px-5 pt-[calc(1.25rem+var(--sat))]">
           <Link href="/" aria-label="Riadha home"><AppIcon size={44} /></Link>
-          <MenuButton user={menuUser} tone="ink" />
+          <div className="flex items-center gap-2">
+            <ShareButton path={`/u/${user.handle}`} title={`${user.displayName} on Riadha`} dark={false} />
+            <MenuButton user={menuUser} tone="ink" />
+          </div>
         </header>
 
         <h1
@@ -206,7 +218,7 @@ export default async function ProfilePage({ params }: PageProps<"/u/[handle]">) 
           {user.role === "athlete" && user.skills.length > 0 && (
             <ul className="mt-4 flex flex-wrap gap-1.5" aria-label="Skills" data-stagger="40">
               {user.skills.map((s) => (
-                <li key={s} data-reveal="scale" className="rounded-full border border-white/20 px-3 py-1.5 text-[12px] font-medium text-white/90">{s}</li>
+                <li key={s} data-reveal="scale" suppressHydrationWarning className="rounded-full border border-white/20 px-3 py-1.5 text-[12px] font-medium text-white/90">{s}</li>
               ))}
             </ul>
           )}
@@ -264,6 +276,8 @@ export default async function ProfilePage({ params }: PageProps<"/u/[handle]">) 
             </div>
           </div>
         )}
+
+        <RunningBlock running={running} own={own} />
 
         {fantasy && (
           <Link href={own ? "/fantasy" : "#"} className="mx-5 mt-12 flex items-center justify-between rounded-2xl bg-navy-2 p-4 ring-1 ring-white/10">
@@ -337,7 +351,16 @@ function MediaThumb({ post, large }: { post: FeedPost; large?: boolean }) {
     return <img src={post.mediaUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />;
   }
   if (post.mediaUrl && post.mediaType === "video") {
-    return <video src={`${post.mediaUrl}#t=0.5`} className="absolute inset-0 h-full w-full object-cover" muted playsInline preload="metadata" />;
+    return <VideoThumb src={post.mediaUrl} poster={post.posterUrl} seed={post.id} />;
+  }
+  if (post.kind === "activity" && post.activity) return <RunThumb a={post.activity} large={large} />;
+  if (post.kind === "medal" && post.data) {
+    const d = post.data as { goalM: number; accent: string };
+    return (
+      <div className="absolute inset-0 grid place-items-center bg-navy">
+        <Medal goalM={d.goalM} accent={d.accent} size={large ? 90 : 46} />
+      </div>
+    );
   }
   return (
     <div className="absolute inset-0 p-3">
@@ -358,7 +381,7 @@ function MediaThumb({ post, large }: { post: FeedPost; large?: boolean }) {
 }
 
 function GalleryCard({ post }: { post: FeedPost }) {
-  const title = post.location?.split(",")[0] ?? post.statLabel ?? "Highlight";
+  const title = post.activity?.title ?? (post.kind === "medal" ? post.body : null) ?? post.location?.split(",")[0] ?? post.statLabel ?? "Highlight";
   return (
     <Link href={`/p/${post.id}`} className="w-full shrink-0 snap-center">
       <div className="relative aspect-[3/4] overflow-hidden rounded-xl bg-navy-2">
@@ -378,3 +401,63 @@ function GalleryCard({ post }: { post: FeedPost }) {
   );
 }
 
+/** Riadha Run on a profile: this year's distance, verified times and GPS records, medals, latest runs. */
+function RunningBlock({ running, own }: { running: Awaited<ReturnType<typeof profileRunning>>; own: boolean }) {
+  const { year, gps, verified, medals, recent } = running;
+  if (!year.n && !verified.length && !medals.length && !gps.length) return null;
+  const covered = new Set(verified.map((v) => v.t.event));
+  const order = new Map<string, number>(EFFORTS.map((e, i) => [e.key, i]));
+  const records = [
+    ...verified.map((v) => ({ key: `v-${v.t.event}`, label: trialLabel(v.t.event), ms: v.t.ms, by: v.club?.displayName ?? "a club" })),
+    ...gps.filter((g) => !covered.has(g.effort) && g.effort !== "400m").sort((a, b) => (order.get(a.effort) ?? 0) - (order.get(b.effort) ?? 0)).map((g) => ({ key: `g-${g.effort}`, label: EFFORTS.find((e) => e.key === g.effort)?.label ?? g.effort, ms: g.ms, by: null })),
+  ].slice(0, 6);
+  return (
+    <div className="mt-12 px-5">
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="kicker text-white/55">Riadha Run</p>
+          <p className="mt-1 text-[28px] font-bold leading-none tracking-[-0.04em] tabular">
+            {km(year.m)} <span className="text-[14px] font-semibold tracking-normal text-white/55">km this year</span>
+          </p>
+          <p className="mt-1 text-[12px] text-white/55">{year.n} activit{year.n === 1 ? "y" : "ies"}</p>
+        </div>
+        {own && <Link href="/run" className="btn btn-light btn-sm">Riadha Run</Link>}
+      </div>
+      {records.length > 0 && (
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          {records.map((r) => (
+            <div key={r.key} className="rounded-xl bg-navy-2 px-3 py-2.5 ring-1 ring-white/10">
+              <p className="kicker text-[10px] text-white/55">{r.label}</p>
+              <p className="mt-0.5 text-[24px] font-bold leading-none tracking-[-0.04em] tabular">{raceTime(r.ms)}</p>
+              {r.by ? (
+                <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-green"><BadgeCheck size={12} /> Verified by {r.by}</p>
+              ) : (
+                <p className="mt-1.5 text-[11px] text-white/45">GPS best</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {medals.length > 0 && (
+        <>
+          <p className="kicker mt-6 text-white/55">Medals</p>
+          <ul className="no-scrollbar -mx-5 mt-2 flex gap-3 overflow-x-auto px-5" aria-label="Medals">
+            {medals.map((m) => (
+              <li key={m.c.id}>
+                <Link href={`/challenges/${m.c.slug}`} className="flex w-24 flex-col items-center gap-1.5 text-center">
+                  <Medal goalM={m.c.goalM} accent={m.c.accent} size={44} />
+                  <span className="line-clamp-2 text-[11px] leading-tight text-white/75">{m.c.title}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {recent.length > 0 && (
+        <div className="mt-5 flex flex-col gap-2">
+          {recent.map((a) => <ActivityRow key={a.id} a={a} dark />)}
+        </div>
+      )}
+    </div>
+  );
+}

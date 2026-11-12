@@ -21,7 +21,7 @@ export function Avatar({ name, url, size = 40, className }: { name: string; url?
     >
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element -- user uploads served from /media
-        <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <img src={url} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
       ) : (
         <span aria-hidden>{initials(name)}</span>
       )}

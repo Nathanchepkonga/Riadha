@@ -5,6 +5,7 @@ import { ChevronLeft } from "lucide-react";
 import { requireUser } from "@/lib/auth/session";
 import { getCommunity } from "@/lib/communities";
 import { EventForm } from "@/components/communities/forms";
+import { RUN_CATEGORIES } from "@/lib/running/constants";
 
 export const metadata: Metadata = { title: "New event" };
 
@@ -21,7 +22,7 @@ export default async function NewEventPage({ params }: PageProps<"/c/[slug]/even
       <p className="kicker mt-3">New event</p>
       <h1 className="h2">Plan something</h1>
       <div className="mt-6">
-        <EventForm communityId={data.community.id} />
+        <EventForm communityId={data.community.id} running={RUN_CATEGORIES.includes(data.community.category)} />
       </div>
     </div>
   );

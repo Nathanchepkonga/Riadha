@@ -5,10 +5,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
-import { communities, communityEvents, communityMembers, communityMessages, eventRsvps } from "@/db/schema";
+import { chatFlags, communities, communityEvents, communityMembers, communityMessages, eventRsvps } from "@/db/schema";
 import { actionUser } from "@/lib/auth/session";
+import { checkMessage, type FilterKind } from "@/lib/chat/filter";
 import { getMembership, type ChatMessage } from "@/lib/communities";
 import { COMMUNITY_INTERESTS, COUNTIES } from "@/lib/constants";
+import { createNotification } from "@/lib/notifications";
 import { uniqueSlug } from "@/lib/slug";
 import { saveUpload } from "@/lib/storage";
 
@@ -147,7 +149,10 @@ export async function removeMember(communityId: number, userId: string) {
 
 /* ───────── Chat ───────── */
 
-export async function sendMessage(communityId: number, raw: string): Promise<{ error: string } | { message: ChatMessage }> {
+export async function sendMessage(
+  communityId: number,
+  raw: string,
+): Promise<{ error: string } | { blocked: { kind: FilterKind; notice: string } } | { message: ChatMessage }> {
   const user = await actionUser();
   if (!(await getMembership(communityId, user.id))) return { error: "Join the community to chat." };
   const body = raw.trim().replace(/\n{3,}/g, "\n\n");
@@ -158,6 +163,14 @@ export async function sendMessage(communityId: number, raw: string): Promise<{ e
     .from(communityMessages)
     .where(and(eq(communityMessages.userId, user.id), gt(communityMessages.createdAt, new Date(Date.now() - 15_000))));
   if (recent.n >= 8) return { error: "You're sending messages too fast. Wait a few seconds." };
+
+  // The blocked text itself is never stored; only the kind is logged.
+  const verdict = checkMessage(body, { realName: user.displayName });
+  if (!verdict.ok) {
+    await db.insert(chatFlags).values({ userId: user.id, kind: verdict.kind });
+    return { blocked: { kind: verdict.kind, notice: verdict.notice } };
+  }
+
   const [m] = await db.insert(communityMessages).values({ communityId, userId: user.id, body }).returning();
   return {
     message: {
@@ -217,6 +230,11 @@ export async function createEvent(communityId: number, _prev: State, form: FormD
   const endsAt = d.endsAt ? nairobi(d.endsAt) : null;
   if (d.endsAt && (!endsAt || endsAt <= startsAt)) return { error: "The end time must be after the start." };
 
+  // Group runs: an optional meeting point (from the organiser's phone) for matching members' runs.
+  const isGroupRun = form.get("isGroupRun") === "on";
+  const lat = Number(form.get("lat"));
+  const lng = Number(form.get("lng"));
+  const pinned = isGroupRun && String(form.get("lat") ?? "") !== "" && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
   const [e] = await db
     .insert(communityEvents)
     .values({
@@ -228,6 +246,9 @@ export async function createEvent(communityId: number, _prev: State, form: FormD
       endsAt,
       capacity: d.capacity === "" ? null : d.capacity,
       createdBy: user.id,
+      isGroupRun,
+      lat: pinned ? lat : null,
+      lng: pinned ? lng : null,
     })
     .returning({ id: communityEvents.id });
   // The organiser is going by default.
@@ -253,6 +274,10 @@ export async function rsvp(eventId: number, status: "going" | "interested" | nul
   if (!e) return { error: "This event was cancelled." };
   const c = await communityById(e.communityId);
   if ((e.endsAt ?? e.startsAt).getTime() < Date.now()) return { error: "This event has already happened." };
+  const [previous] = await db
+    .select({ status: eventRsvps.status })
+    .from(eventRsvps)
+    .where(and(eq(eventRsvps.eventId, eventId), eq(eventRsvps.userId, user.id)));
 
   if (status === null) {
     await db.delete(eventRsvps).where(and(eq(eventRsvps.eventId, eventId), eq(eventRsvps.userId, user.id)));
@@ -270,6 +295,16 @@ export async function rsvp(eventId: number, status: "going" | "interested" | nul
       .insert(eventRsvps)
       .values({ eventId, userId: user.id, status })
       .onConflictDoUpdate({ target: [eventRsvps.eventId, eventRsvps.userId], set: { status } });
+  }
+  if (status && previous?.status !== status) {
+    await createNotification({
+      userId: e.createdBy,
+      actorId: user.id,
+      kind: "event_rsvp",
+      title: `${user.displayName} responded to your event`,
+      body: `${user.displayName} is ${status === "going" ? "going" : "interested"} in ${e.title}.`,
+      href: `/c/${c.slug}/events/${eventId}`,
+    });
   }
   revalidatePath(`/c/${c.slug}/events/${eventId}`);
   revalidatePath(`/c/${c.slug}`);

@@ -202,15 +202,38 @@ export default async function Landing() {
         </Marquee>
       </div>
 
+      <section className="mx-auto max-w-[1120px] px-5 py-14 md:py-20" aria-labelledby="start-heading">
+        <p className="kicker text-cobalt">Start with what matters to you</p>
+        <h2 id="start-heading" className="h1 mt-2 max-w-[15ch]">Your sport, your next move.</h2>
+        <p className="mt-3 max-w-[52ch] text-[15px] leading-relaxed text-muted">Choose a starting point. Riadha will shape your first experience around it, while keeping every part of the game open to you.</p>
+        <div className="mt-7 grid gap-3 sm:grid-cols-2">
+          {[
+            { href: "/login?intent=fan", icon: Shirt, title: "Follow sport", body: "Play fantasy, watch highlights and find your crew." },
+            { href: "/login?intent=athlete", icon: UserRound, title: "Showcase myself", body: "Build a portfolio, post highlights and get discovered." },
+            { href: "/login?intent=club", icon: UsersRound, title: "Grow a club or team", body: "Bring your squad, events and community together." },
+            { href: "/login?intent=scout", icon: Radar, title: "Find athletes", body: "Search talent by sport, county, position and skills." },
+          ].map(({ href, icon: Icon, title, body }) => (
+            <Link key={href} href={href} className="pressable group flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 shadow-[0_8px_24px_-20px_rgba(8,16,24,.5)]">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-navy text-green"><Icon size={20} /></span>
+              <span className="min-w-0">
+                <span className="block font-bold">{title}</span>
+                <span className="mt-1 block text-[13px] leading-snug text-muted">{body}</span>
+              </span>
+              <ArrowRight size={16} className="mt-1 shrink-0 text-cobalt transition-transform group-hover:translate-x-1" />
+            </Link>
+          ))}
+        </div>
+      </section>
+
       {/* ───────── App tour ───────── */}
       <section id="tour" className="relative scroll-mt-4 overflow-hidden pb-6 pt-12">
         <div className="mx-auto max-w-[1120px] px-5">
-          <p className="kicker" data-reveal="fade">The app</p>
+          <p className="kicker" data-reveal="fade" suppressHydrationWarning>The app</p>
           <KineticText text="One app for the whole game." className="h1 mt-2 max-w-[16ch]" />
         </div>
         <div className="no-scrollbar mt-10 flex snap-x snap-mandatory gap-6 overflow-x-auto px-[max(1.25rem,calc(50vw-560px))] pb-8 md:justify-center" data-stagger="120">
           {phones.map((p) => (
-            <figure key={p.caption} data-reveal="up" className="shrink-0 snap-center">
+            <figure key={p.caption} data-reveal="up" suppressHydrationWarning className="shrink-0 snap-center">
               <Tilt className="rounded-[54px]">
                 <PhoneMockup>{p.el}</PhoneMockup>
               </Tilt>
@@ -223,7 +246,7 @@ export default async function Landing() {
       {/* ───────── Six modules, stacking as you scroll ───────── */}
       <section className="mx-auto max-w-[1120px] px-4 pb-10 pt-6 md:px-5">
         <div className="px-1">
-          <p className="kicker" data-reveal="fade">Everything in one place</p>
+          <p className="kicker" data-reveal="fade" suppressHydrationWarning>Everything in one place</p>
           <KineticText text="Six rooms, one house." className="h1 mt-2" />
         </div>
         <div className="mt-8 flex flex-col gap-5">
@@ -286,7 +309,7 @@ export default async function Landing() {
             ]
               .filter(([n]) => Number(n) > 0)
               .map(([n, l], i) => (
-              <div key={l} data-reveal="up" className="border-t border-white/15 pt-4">
+              <div key={l} data-reveal="up" suppressHydrationWarning className="border-t border-white/15 pt-4">
                 <dd className={cn("text-[clamp(44px,12vw,72px)] font-bold leading-none tracking-[-0.05em] tabular", i === 0 && "text-mark")}>
                   <CountUp to={Number(n)} delay={i * 120} />
                 </dd>
@@ -299,7 +322,7 @@ export default async function Landing() {
 
       {/* ───────── CTA on the brand pattern ───────── */}
       <section className="mx-auto max-w-[1120px] px-4 py-14 md:px-5">
-        <div data-reveal="scale" className="relative overflow-hidden rounded-[28px] bg-navy text-white">
+        <div data-reveal="scale" suppressHydrationWarning className="relative overflow-hidden rounded-[28px] bg-navy text-white">
           <ChevronPattern className="absolute inset-0 h-full w-full opacity-70" />
           <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/85 to-navy/10" />
           <div className="relative flex flex-col items-start gap-6 p-7 md:flex-row md:items-center md:justify-between md:p-12">

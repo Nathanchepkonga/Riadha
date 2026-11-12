@@ -16,6 +16,7 @@ import * as s from "../src/db/schema";
 import { recalculateGameweek, saveFixtureResult, type StatInput } from "../src/lib/fantasy/engine";
 import { BUDGET, MAX_PER_CLUB, SQUAD_SHAPE, defaultLineup, validateSquad, type Pos } from "../src/lib/fantasy/rules";
 import { seedModules } from "./seed-modules";
+import { seedRunning } from "./seed-running";
 
 const { db, client } = createDb(process.env.DATABASE_URL, 3);
 
@@ -575,8 +576,9 @@ async function main() {
     ...entryRows.slice(10, 19).map((e) => ({ leagueId: chama.id, entryId: e.id })),
   ]);
 
-  /* communities, marketplace, scouting, comments */
+  /* communities, marketplace, scouting, comments, then Riadha Run */
   await seedModules(db);
+  await seedRunning(db);
 
   console.log(`Done. GW${NEXT_GW} deadline: ${nextDeadline.toISOString()}`);
   console.log("Admin login: +254700000001 (OTP is shown on screen in dev mode)");

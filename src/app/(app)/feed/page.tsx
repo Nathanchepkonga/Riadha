@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { asc } from "drizzle-orm";
-import { Clapperboard, Flame, Radar, Shirt, Store, Timer, UsersRound } from "lucide-react";
+import { ArrowRight, Clapperboard, Flame, Footprints, Radar, Shirt, Store, Timer, UserRound, UsersRound } from "lucide-react";
 import { db } from "@/db";
 import { kplClubs } from "@/db/schema";
 import { requireUser } from "@/lib/auth/session";
@@ -11,7 +11,12 @@ import { getEntry } from "@/lib/fantasy/data";
 import { getNextGameweek } from "@/lib/fantasy/engine";
 import { listBusinesses } from "@/lib/market";
 import { getPosts } from "@/lib/queries";
+import { postTitle } from "@/lib/posts";
 import { canScout } from "@/lib/roles";
+import { profileProgress } from "@/lib/profile-progress";
+import { dailyKm, myWeek } from "@/lib/running/queries";
+import { weekStartOf } from "@/lib/running/track";
+import { km } from "@/lib/running/format";
 import { SPORTS, categoryLabel } from "@/lib/constants";
 import { compact, countdown, formatDate, formatKickoff } from "@/lib/format";
 import { PostCard } from "@/components/feed/post-card";
@@ -41,7 +46,7 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
   const sport = typeof rawSport === "string" && SPORTS.includes(rawSport) ? rawSport : undefined;
   const following = tab === "following";
 
-  const [posts, top, next, entry, clubs, ads, crews, shops] = await Promise.all([
+  const [posts, top, next, entry, clubs, ads, crews, shops, runWeek, runDays] = await Promise.all([
     getPosts({ viewerId: user.id, mode: following ? "following" : "forYou", sport }),
     getPosts({ viewerId: user.id, mode: "forYou", sport, mediaOnly: true, limit: 4 }),
     getNextGameweek(db),
@@ -50,12 +55,24 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
     getAdsFor(user, 1),
     listCommunities({ viewerId: user.id, category: sport, limit: 8 }),
     listBusinesses({ county: user.county ?? undefined, sport, limit: 6 }).then((r) => (r.length ? r : listBusinesses({ limit: 6 }))),
+    myWeek(user.id, weekStartOf(new Date())),
+    dailyKm(user.id, 7),
   ]);
   const topIds = new Set(top.map((p) => p.id));
   const rest = posts.filter((p) => !topIds.has(p.id));
   const highlights = rest.filter((p) => p.statValue || p.mediaUrl).slice(0, 6);
   const crewsToJoin = crews.filter((c) => !c.joined).slice(0, 6);
   const first = user.displayName.split(" ")[0];
+  const progress = profileProgress(user);
+  const nextMove = user.role === "athlete"
+    ? { label: progress.percent < 100 ? progress.nextLabel : "Post your latest highlight", href: progress.percent < 100 ? progress.nextHref : "/post/new", body: progress.percent < 100 ? "A stronger profile helps clubs and scouts find you." : "Show clubs and scouts what you can do." }
+    : user.role === "scout"
+      ? { label: "Discover athletes", href: "/discover?role=athlete", body: "Search verified talent by sport, position and county." }
+      : user.role === "club"
+        ? { label: "Open your club page", href: `/u/${user.handle}`, body: "Share your latest result and invite your community." }
+        : { label: entry ? "Set your captain" : "Build your fantasy squad", href: "/fantasy", body: "Make your first move before the gameweek deadline." };
+  const runMeters = [...runDays.values()].reduce((total, value) => total + value, 0);
+  const runActiveDays = [...runDays.values()].filter((value) => value > 0).length;
 
   const chips = [
     { href: "/feed", label: "Trending", icon: <Flame size={14} />, active: !following && !sport },
@@ -63,6 +80,7 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
     ...SPORT_CHIPS.map((s) => ({ href: `/feed?sport=${s}`, label: s, active: sport === s })),
   ];
   const quick = [
+    { href: "/run", label: "Run", icon: Footprints },
     { href: "/watch", label: "Watch", icon: Clapperboard },
     { href: "/fantasy", label: "Fantasy", icon: Shirt },
     { href: "/communities", label: "Crews", icon: UsersRound },
@@ -81,9 +99,9 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
             {formatDate(new Date(), { weekday: "long", day: "numeric", month: "long" })}
           </p>
           <KineticText as="h1" text={`${greeting()}, *${first}.*`} className="mt-1.5 text-[clamp(28px,8.4vw,36px)] font-bold leading-[1.05] tracking-[-0.035em]" />
-          <nav aria-label="Shortcuts" className="mt-5 grid grid-cols-4 gap-2" data-stagger="60">
-            {quick.slice(0, 4).map(({ href, label, icon: Icon }) => (
-              <Link key={href} href={href} data-reveal="up" className="glass pressable group flex flex-col items-center gap-1.5 rounded-2xl py-3 text-[11px] font-semibold">
+          <nav aria-label="Shortcuts" className="mt-5 grid grid-cols-5 gap-1.5" data-stagger="60">
+            {quick.slice(0, 5).map(({ href, label, icon: Icon }) => (
+              <Link key={href} href={href} data-reveal="up" suppressHydrationWarning className="glass pressable group flex flex-col items-center gap-1.5 rounded-2xl py-3 text-[11px] font-semibold">
                 <span className="grid h-9 w-9 place-items-center rounded-xl bg-white/10 text-green transition-transform duration-500 ease-[var(--ease-spring)] group-hover:-translate-y-0.5 group-hover:scale-110">
                   <Icon size={18} />
                 </span>
@@ -91,7 +109,7 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
               </Link>
             ))}
           </nav>
-          {quick[4] && (
+          {quick[5] && (
             <Link href="/scout" className="glass pressable mt-2 flex items-center justify-between rounded-2xl px-4 py-3 text-[13px] font-semibold">
               <span className="flex items-center gap-2">
                 <Radar size={16} className="text-green" /> Scout portal
@@ -102,6 +120,45 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
         </div>
       </section>
 
+      <Link href={nextMove.href} data-reveal="up" suppressHydrationWarning className="pressable group flex items-center gap-3 rounded-[22px] border border-line bg-surface p-4 shadow-[0_8px_24px_-18px_rgba(8,16,24,.5)]">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-navy text-green">
+          {user.role === "athlete" ? <UserRound size={20} /> : user.role === "scout" ? <Radar size={20} /> : user.role === "club" ? <UsersRound size={20} /> : <Shirt size={20} />}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="kicker block text-[10px]">Your next move</span>
+          <span className="mt-1 block truncate text-[15px] font-bold">{nextMove.label}</span>
+          <span className="mt-0.5 block text-[12px] leading-snug text-muted">{nextMove.body}</span>
+        </span>
+        <ArrowRight size={17} className="shrink-0 text-cobalt transition-transform group-hover:translate-x-1" />
+      </Link>
+
+      <section className="rounded-[24px] bg-navy p-4 text-white" data-reveal="up" suppressHydrationWarning>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="kicker text-white/55">Your week</p>
+            <h2 className="mt-1 text-[20px] font-bold tracking-[-0.02em]">Keep your momentum.</h2>
+          </div>
+          <Link href="/run" className="text-[12px] font-semibold text-green">Open Run <ArrowRight size={14} className="inline" /></Link>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <Link href="/run" className="rounded-2xl bg-white/[.07] p-3 transition-colors hover:bg-white/10">
+            <span className="block text-[22px] font-bold tabular">{km(runMeters)}</span>
+            <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-white/50">km moved</span>
+          </Link>
+          <Link href="/run/leagues" className="rounded-2xl bg-white/[.07] p-3 transition-colors hover:bg-white/10">
+            <span className="block text-[22px] font-bold tabular">{runWeek.w?.points ?? 0}</span>
+            <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-white/50">run points</span>
+          </Link>
+          <Link href="/challenges" className="rounded-2xl bg-white/[.07] p-3 transition-colors hover:bg-white/10">
+            <span className="block text-[22px] font-bold tabular">{runActiveDays}</span>
+            <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-white/50">active days</span>
+          </Link>
+        </div>
+        <p className="mt-3 text-[12px] text-white/60">
+          {runActiveDays ? `You have moved on ${runActiveDays} day${runActiveDays === 1 ? "" : "s"} this week.` : "Record your first activity this week and start your Run League journey."}
+        </p>
+      </section>
+
       <form action="/discover" role="search">
         <SearchField placeholder="Athlete, club, sport or county" />
       </form>
@@ -109,7 +166,7 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
       <ChipRow items={chips} label="Filter the feed" />
 
       {top.length > 0 && (
-        <div data-reveal="fade">
+        <div data-reveal="fade" suppressHydrationWarning>
           <Carousel label="Top stories">
             {top.map((p, i) => (
               <NewsSlide
@@ -117,9 +174,10 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
                 href={`/p/${p.id}`}
                 image={p.mediaUrl}
                 video={p.mediaType === "video"}
+                poster={p.posterUrl}
                 seed={p.id}
                 tag={i === 0 ? "Top story" : (p.author.sport ?? "Showcase")}
-                title={p.body || `${p.statLabel} ${p.statValue}`}
+                title={postTitle(p)}
                 stat={p.statValue ? { label: p.statLabel ?? "", value: p.statValue } : null}
                 meta={
                   <>
@@ -133,7 +191,7 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
       )}
 
       {next && (
-        <Link href="/fantasy" data-reveal="up" className="pressable edge-glow relative block overflow-hidden rounded-[24px] bg-navy p-4 text-white">
+        <Link href="/fantasy" data-reveal="up" suppressHydrationWarning className="pressable edge-glow relative block overflow-hidden rounded-[24px] bg-navy p-4 text-white">
           <SlashStripes className="absolute -bottom-4 -right-12 w-40 opacity-80" />
           <p className="kicker flex items-center gap-1.5 text-white/60">
             <Timer size={13} /> Riadha Fantasy · Gameweek {next.id}
@@ -151,15 +209,16 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
           <SectionHeader title="Highlights" href="/watch" action="Watch reels" />
           <div className="no-scrollbar -mx-4 mt-3 flex gap-3 overflow-x-auto px-4" data-stagger="70">
             {highlights.map((p) => (
-              <div key={p.id} data-reveal="right" className="shrink-0">
+              <div key={p.id} data-reveal="right" suppressHydrationWarning className="shrink-0">
                 <HighlightCard
                   href={`/p/${p.id}`}
                   image={p.mediaUrl}
                   video={p.mediaType === "video"}
+                  poster={p.posterUrl}
                   seed={p.id}
                   tag={p.statLabel ?? "Highlight"}
-                  title={p.statValue ? `${p.statValue} · ${p.author.displayName}` : p.author.displayName}
-                  body={p.body}
+                  title={p.statValue ? `${p.statValue} · ${p.author.displayName}` : p.activity ? postTitle(p) : p.author.displayName}
+                  body={p.activity ? p.author.displayName : p.body}
                 />
               </div>
             ))}
@@ -172,7 +231,7 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
           <SectionHeader title="Crews to join" href="/communities" action="All communities" />
           <div className="no-scrollbar -mx-4 mt-3 flex gap-3 overflow-x-auto px-4" data-stagger="70">
             {crewsToJoin.map(({ community: c, members }) => (
-              <Link key={c.id} href={`/c/${c.slug}`} data-reveal="right" className="pressable card w-[190px] shrink-0 overflow-hidden">
+              <Link key={c.id} href={`/c/${c.slug}`} data-reveal="right" suppressHydrationWarning className="pressable card w-[190px] shrink-0 overflow-hidden">
                 <CommunityCover name={c.name} category={c.category} coverUrl={c.coverUrl} className="h-24" iconSize={44} />
                 <div className="p-3">
                   <p className="line-clamp-1 font-semibold">{c.name}</p>
@@ -190,7 +249,7 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
         <SectionHeader title="KPL clubs" href="/fixtures" action="Fixtures" />
         <div className="no-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4" data-stagger="40">
           {clubs.map((c) => (
-            <div key={c.id} data-reveal="scale" className="shrink-0">
+            <div key={c.id} data-reveal="scale" suppressHydrationWarning className="shrink-0">
               <LeagueTile href={`/fixtures?club=${c.id}`} badge={<ClubBadge short={c.shortName} primary={c.primaryColor} secondary={c.secondaryColor} size={40} />} name={c.name} />
             </div>
           ))}
@@ -202,7 +261,7 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
           <SectionHeader title={user.county ? `Near you in ${user.county}` : "Marketplace"} href="/market" action="Marketplace" />
           <div className="no-scrollbar -mx-4 mt-3 flex gap-3 overflow-x-auto px-4" data-stagger="70">
             {shops.map((b) => (
-              <Link key={b.id} href={`/market/${b.slug}`} data-reveal="right" className="pressable card group w-[220px] shrink-0 overflow-hidden">
+              <Link key={b.id} href={`/market/${b.slug}`} data-reveal="right" suppressHydrationWarning className="pressable card group w-[220px] shrink-0 overflow-hidden">
                 <BusinessCover b={b} className="h-24" />
                 <div className="flex items-center gap-2.5 p-3">
                   <BusinessLogo name={b.name} url={b.logoUrl} size={36} />
@@ -231,11 +290,11 @@ export default async function HomePage({ searchParams }: PageProps<"/feed">) {
           ) : (
             rest.map((p, i) => (
               <div key={p.id} className="flex flex-col gap-4">
-                <div data-reveal="up">
+                <div data-reveal="up" suppressHydrationWarning>
                   <PostCard post={p} signedIn priority={i < 1} viewer={{ id: user.id, isAdmin: user.isAdmin }} />
                 </div>
                 {i === 2 && ads[0] && (
-                  <div data-reveal="up">
+                  <div data-reveal="up" suppressHydrationWarning>
                     <AdCard ad={ads[0]} placement="home" />
                   </div>
                 )}

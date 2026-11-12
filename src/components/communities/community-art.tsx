@@ -42,7 +42,7 @@ export function CommunityCover({ name, category, coverUrl, className, iconSize =
     return (
       <div className={cn("relative overflow-hidden bg-navy", className)}>
         {/* eslint-disable-next-line @next/next/no-img-element -- owner uploads served from /media */}
-        <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <img src={coverUrl} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
       </div>
     );
   }

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, CalendarPlus, ChevronLeft, Clock, MapPin, Trash2, UsersRound } from "lucide-react";
+import { CalendarDays, CalendarPlus, ChevronLeft, Clock, Footprints, MapPin, Trash2, UsersRound } from "lucide-react";
 import { deleteEvent } from "@/actions/communities";
 import { requireUser } from "@/lib/auth/session";
 import { getEvent, getMembership } from "@/lib/communities";
@@ -11,6 +11,9 @@ import { ShareButton } from "@/components/feed/buttons";
 import { Avatar } from "@/components/ui/avatar";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { RsvpControl } from "@/components/communities/rsvp";
+import { RouteArt } from "@/components/run/route-art";
+import { pace } from "@/lib/running/format";
+import { eventRunResults } from "@/lib/running/queries";
 
 export async function generateMetadata({ params }: PageProps<"/c/[slug]/events/[id]">): Promise<Metadata> {
   const user = await requireUser();
@@ -42,7 +45,11 @@ export default async function EventPage({ params }: PageProps<"/c/[slug]/events/
         <Aurora intensity={0.8} />
         <SpeedStripes animated fade className="absolute -bottom-2 -right-20 w-56 opacity-50" />
         <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-green">{past ? "Finished" : `Starts in ${countdown(e.startsAt)}`}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-green">
+            {e.isGroupRun && <Footprints size={12} className="-mt-0.5 mr-1 inline" />}
+            {e.isGroupRun ? "Group run · " : ""}
+            {past ? "Finished" : `Starts in ${countdown(e.startsAt)}`}
+          </p>
           <h1 className="mt-2 text-[30px] font-bold leading-[1.05] tracking-[-0.035em]">{e.title}</h1>
           <dl className="mt-4 flex flex-col gap-2 text-[14px] text-white/80">
             <div className="flex items-center gap-2">
@@ -81,18 +88,20 @@ export default async function EventPage({ params }: PageProps<"/c/[slug]/events/
         </div>
       </section>
 
-      <section className="card mt-4 p-4" data-reveal="up">
+      <section className="card mt-4 p-4" data-reveal="up" suppressHydrationWarning>
         <RsvpControl eventId={e.id} status={myStatus} going={going} interested={interested} capacity={e.capacity} past={past} />
       </section>
 
+      {e.isGroupRun && <GroupRunResults eventId={e.id} recapPostId={e.recapPostId} startsAt={e.startsAt} />}
+
       {e.description && (
-        <section className="mt-6" data-reveal="up">
+        <section className="mt-6" data-reveal="up" suppressHydrationWarning>
           <h2 className="h5">Details</h2>
           <p className="mt-2 whitespace-pre-line text-[15px] leading-relaxed text-ink/90">{e.description}</p>
         </section>
       )}
 
-      <section className="mt-6" data-reveal="up">
+      <section className="mt-6" data-reveal="up" suppressHydrationWarning>
         <h2 className="h5 flex items-center gap-2">
           <UsersRound size={18} /> Who&apos;s going
         </h2>
@@ -119,5 +128,52 @@ export default async function EventPage({ params }: PageProps<"/c/[slug]/events/
         </ConfirmButton>
       )}
     </div>
+  );
+}
+
+/** Runs that matched this group run: who came, how far, and the shapes (adults only). */
+async function GroupRunResults({ eventId, recapPostId, startsAt }: { eventId: number; recapPostId: number | null; startsAt: Date }) {
+  const r = await eventRunResults(eventId);
+  const started = isPast(startsAt);
+  return (
+    <section className="mt-4 overflow-hidden rounded-[24px] bg-navy p-4 text-white" data-reveal="up" suppressHydrationWarning>
+      <p className="kicker flex items-center gap-1.5 text-green"><Footprints size={13} /> Group run results</p>
+      {r.runners === 0 ? (
+        <p className="mt-2 text-[14px] text-white/75">
+          {started ? "No runs matched yet." : "Results appear here as runs come in."} Record your run from the meeting point (or upload it afterwards) and it joins the results by itself, worth +3 Run League points.
+        </p>
+      ) : (
+        <>
+          <p className="mt-1 text-[24px] font-bold tracking-[-0.03em]">
+            {r.runners} runner{r.runners === 1 ? "" : "s"} · {r.totalKm} km
+          </p>
+          {r.fastestPace && <p className="text-[13px] text-white/65">Fastest average pace {pace(r.fastestPace)}/km</p>}
+          {r.arts.length > 0 && (
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {r.arts.map((art, i) => (
+                <div key={i} className="aspect-square rounded-xl bg-white/[.06]">
+                  <RouteArt art={art} width={26} className="h-full w-full" glow={false} />
+                </div>
+              ))}
+            </div>
+          )}
+          <ul className="mt-3 flex flex-col gap-1.5">
+            {r.people.map((p) => (
+              <li key={p.handle}>
+                <Link href={`/u/${p.handle}`} className="flex items-center gap-2.5 text-[14px]">
+                  <Avatar name={p.name} url={p.avatarUrl} size={28} />
+                  <span className="min-w-0 flex-1 truncate font-semibold">{p.name}</span>
+                  <span className="tabular text-white/70">{p.km} km</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {r.runners > r.people.length && <p className="mt-1 text-[12px] text-white/55">+{r.runners - r.people.length} more (runners under 18 aren&apos;t named)</p>}
+          {recapPostId && (
+            <Link href={`/p/${recapPostId}`} className="mt-3 inline-block text-[13px] font-semibold text-green">See the recap post →</Link>
+          )}
+        </>
+      )}
+    </section>
   );
 }

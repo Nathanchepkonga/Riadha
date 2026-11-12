@@ -7,10 +7,23 @@ import { z } from "zod";
 import { db } from "@/db";
 import { entryPicks, fantasyEntries, leagueMembers, leagues, players, transfers } from "@/db/schema";
 import { actionUser } from "@/lib/auth/session";
+import { checkMessage } from "@/lib/chat/filter";
 import { ensurePicksFor, getNextGameweek } from "@/lib/fantasy/engine";
 import { defaultLineup, validateSquad, validateXI, type Pos } from "@/lib/fantasy/rules";
 
 type Result = { error?: string };
+
+/** Team names are the manager's identity in league chats and tables, so they get the chat checks too. */
+function teamNameError(name: string, realName: string) {
+  if (name.length < 3 || name.length > 30) return "Team name: 3–30 characters.";
+  const verdict = checkMessage(name, { realName });
+  if (verdict.ok) return null;
+  return verdict.kind === "name"
+    ? "Team names show in league chats, so keep your real name out of it."
+    : verdict.kind === "abuse"
+      ? "Pick a friendlier team name. Riadha is for fans of every age."
+      : "Team names can't include phone numbers, emails or other personal details.";
+}
 
 async function loadSquad(ids: number[]) {
   if (ids.length === 0) return [];
@@ -25,7 +38,8 @@ const idsSchema = z.array(z.number().int().positive()).length(15);
 export async function createEntry(teamName: string, playerIds: number[], joinCode?: string): Promise<Result> {
   const user = await actionUser();
   const name = teamName.trim();
-  if (name.length < 3 || name.length > 30) return { error: "Team name: 3–30 characters." };
+  const nameError = teamNameError(name, user.displayName);
+  if (nameError) return { error: nameError };
   const ids = idsSchema.safeParse(playerIds);
   if (!ids.success) return { error: "Pick 15 players." };
 
@@ -42,7 +56,7 @@ export async function createEntry(teamName: string, playerIds: number[], joinCod
   await db.transaction(async (tx) => {
     const [entry] = await tx.insert(fantasyEntries).values({ userId: user.id, teamName: name, startGameweekId: next.id }).returning();
     await tx.insert(entryPicks).values(defaultLineup(squad).map((p) => ({ ...p, entryId: entry.id, gameweekId: next.id })));
-    // Everyone starts in the public launch league.
+    // Everyone starts in the one public league, Riadha Overall (code RIADHA).
     const codes = ["RIADHA", ...(joinCode ? [joinCode.toUpperCase()] : [])];
     const toJoin = await tx.select({ id: leagues.id }).from(leagues).where(inArray(leagues.code, codes));
     if (toJoin.length) {
@@ -138,7 +152,8 @@ export async function saveLineup(picks: z.infer<typeof lineupSchema>): Promise<R
 export async function renameTeam(_prev: Result | undefined, form: FormData): Promise<Result> {
   const user = await actionUser();
   const name = String(form.get("teamName") ?? "").trim();
-  if (name.length < 3 || name.length > 30) return { error: "Team name: 3–30 characters." };
+  const nameError = teamNameError(name, user.displayName);
+  if (nameError) return { error: nameError };
   await db.update(fantasyEntries).set({ teamName: name }).where(eq(fantasyEntries.userId, user.id));
   revalidatePath("/fantasy");
   return {};
@@ -155,6 +170,7 @@ export async function createLeague(_prev: Result | undefined, form: FormData): P
   const user = await actionUser();
   const name = String(form.get("name") ?? "").trim();
   if (name.length < 3 || name.length > 40) return { error: "League name: 3–40 characters." };
+  if (!checkMessage(name).ok) return { error: "Pick a friendlier league name without personal details." };
   const [entry] = await db.select().from(fantasyEntries).where(eq(fantasyEntries.userId, user.id));
   if (!entry) return { error: "Create your fantasy team first." };
 
@@ -185,6 +201,8 @@ export async function joinByCode(code: string): Promise<Result> {
 export async function leaveLeague(leagueId: number) {
   const user = await actionUser();
   const [entry] = await db.select().from(fantasyEntries).where(eq(fantasyEntries.userId, user.id));
-  if (entry) await db.delete(leagueMembers).where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.entryId, entry.id)));
+  const [league] = await db.select({ kind: leagues.kind }).from(leagues).where(eq(leagues.id, leagueId));
+  // Everyone stays in Riadha Overall.
+  if (entry && league && league.kind !== "public") await db.delete(leagueMembers).where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.entryId, entry.id)));
   redirect("/fantasy/leagues");
 }

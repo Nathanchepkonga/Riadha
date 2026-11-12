@@ -4,9 +4,11 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { gameweeks, players, users, verificationRequests } from "@/db/schema";
+import { entryGameweeks, fantasyEntries, fixtures, gameweeks, players, users, verificationRequests } from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth/session";
+import { recordAudit } from "@/lib/audit";
 import { recalculateGameweek, saveFixtureResult, type StatInput } from "@/lib/fantasy/engine";
+import { createNotification, createNotificationOnce } from "@/lib/notifications";
 
 async function admin() {
   const user = await getCurrentUser();
@@ -29,12 +31,22 @@ export async function reviewVerification(id: number, decision: "approved" | "rej
       await tx.update(users).set({ role: req.type, verified: true }).where(eq(users.id, req.userId));
     }
   });
+  await recordAudit(db, { actorId: me.id, action: "verification.review", targetType: "verification_request", targetId: id, outcome: "success", metadata: { decision } });
+  await createNotification({
+    userId: req.userId,
+    actorId: me.id,
+    kind: "verification_decision",
+    title: decision === "approved" ? "You are verified" : "Verification update",
+    body: decision === "approved" ? "Your Riadha profile is now verified." : note ?? "Your verification request was not approved this time.",
+    href: "/me/verify",
+  });
   revalidatePath("/admin/verification");
 }
 
 export async function revokeVerification(userId: string) {
-  await admin();
+  const me = await admin();
   await db.update(users).set({ verified: false }).where(eq(users.id, userId));
+  await recordAudit(db, { actorId: me.id, action: "verification.revoke", targetType: "user", targetId: userId, outcome: "success" });
   revalidatePath("/admin/verification");
 }
 
@@ -59,6 +71,8 @@ export async function saveFixture(
   const scores = z.object({ homeScore: z.number().int().min(0).max(30), awayScore: z.number().int().min(0).max(30), finished: z.boolean() }).safeParse(input);
   const rows = z.array(statRow).safeParse(input.rows);
   if (!scores.success || !rows.success) return { error: "Check the numbers: something is out of range." };
+  const [fixture] = await db.select({ gameweekId: fixtures.gameweekId }).from(fixtures).where(eq(fixtures.id, fixtureId));
+  if (!fixture) return { error: "Fixture not found." };
   try {
     await saveFixtureResult(db, fixtureId, { ...scores.data, rows: rows.data });
   } catch (e) {
@@ -69,15 +83,35 @@ export async function saveFixture(
 }
 
 export async function setGameweekFinished(gwId: number, finished: boolean) {
-  await admin();
+  const me = await admin();
   await db.update(gameweeks).set({ finished }).where(eq(gameweeks.id, gwId));
   await recalculateGameweek(db, gwId);
+  if (finished) await notifyFinishedGameweek(gwId);
+  await recordAudit(db, { actorId: me.id, action: "fantasy.gameweek_status", targetType: "gameweek", targetId: gwId, outcome: "success", metadata: { finished } });
   revalidatePath("/admin/gameweeks");
 }
 
+async function notifyFinishedGameweek(gameweekId: number) {
+  const [gw] = await db.select({ id: gameweeks.id }).from(gameweeks).where(eq(gameweeks.id, gameweekId));
+  if (!gw) return;
+  const rows = await db
+    .select({ userId: fantasyEntries.userId, points: entryGameweeks.points })
+    .from(entryGameweeks)
+    .innerJoin(fantasyEntries, eq(fantasyEntries.id, entryGameweeks.entryId))
+    .where(eq(entryGameweeks.gameweekId, gameweekId));
+  await Promise.all(rows.map((row) => createNotificationOnce({
+    userId: row.userId,
+    kind: "fantasy_score",
+    title: `GW${gameweekId} scores are final`,
+    body: `Your team scored ${row.points} point${row.points === 1 ? "" : "s"} this gameweek.`,
+    href: `/fantasy/points/${gameweekId}`,
+  })));
+}
+
 export async function recalcGameweek(gwId: number) {
-  await admin();
+  const me = await admin();
   await recalculateGameweek(db, gwId);
+  await recordAudit(db, { actorId: me.id, action: "fantasy.recalculate", targetType: "gameweek", targetId: gwId, outcome: "success" });
   revalidatePath("/admin/gameweeks");
 }
 

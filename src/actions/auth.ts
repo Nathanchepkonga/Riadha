@@ -11,8 +11,15 @@ import { actionUser, createSession, destroySession } from "@/lib/auth/session";
 import { otpDevMode, sendSms } from "@/lib/auth/sms";
 
 export type OtpState =
-  | { step: "phone"; error?: string }
-  | { step: "code"; phone: string; devCode?: string; error?: string };
+  | { step: "phone"; intent?: string; error?: string }
+  | { step: "code"; phone: string; intent?: string; devCode?: string; error?: string };
+
+const INTENTS = new Set(["fan", "athlete", "club", "scout"]);
+
+function safeIntent(value: FormDataEntryValue | null) {
+  const intent = typeof value === "string" ? value : "";
+  return INTENTS.has(intent) ? intent : undefined;
+}
 
 function adminPhones() {
   return (process.env.ADMIN_PHONES ?? "").split(",").map((p) => p.trim()).filter(Boolean);
@@ -20,26 +27,28 @@ function adminPhones() {
 
 export async function requestOtp(_prev: OtpState, form: FormData): Promise<OtpState> {
   const phone = normalizePhone(String(form.get("phone") ?? ""));
-  if (!phone) return { step: "phone", error: "Enter a valid phone number, e.g. 0712 345 678." };
+  const intent = safeIntent(form.get("intent"));
+  if (!phone) return { step: "phone", intent, error: "Enter a valid phone number, e.g. 0712 345 678." };
   const issued = await issueOtp(phone);
-  if (!issued.ok) return { step: "code", phone, error: issued.error };
-  if (otpDevMode()) return { step: "code", phone, devCode: issued.code };
+  if (!issued.ok) return { step: "code", phone, intent, error: issued.error };
+  if (otpDevMode()) return { step: "code", phone, intent, devCode: issued.code };
   try {
     await sendSms(phone, `Your Riadha code is ${issued.code}. It expires in 5 minutes.`);
   } catch {
-    return { step: "phone", error: "We couldn't send the SMS. Try again in a moment." };
+    return { step: "phone", intent, error: "We couldn't send the SMS. Try again in a moment." };
   }
-  return { step: "code", phone };
+  return { step: "code", phone, intent };
 }
 
 export async function confirmOtp(_prev: OtpState, form: FormData): Promise<OtpState> {
   const phone = normalizePhone(String(form.get("phone") ?? ""));
   const code = String(form.get("code") ?? "").replace(/\D/g, "");
-  if (!phone) return { step: "phone", error: "Enter your phone number again." };
-  if (code.length !== 6) return { step: "code", phone, error: "Enter the 6-digit code." };
+  const intent = safeIntent(form.get("intent"));
+  if (!phone) return { step: "phone", intent, error: "Enter your phone number again." };
+  if (code.length !== 6) return { step: "code", phone, intent, error: "Enter the 6-digit code." };
 
   const result = await verifyOtp(phone, code);
-  if (!result.ok) return { step: "code", phone, error: result.error };
+  if (!result.ok) return { step: "code", phone, intent, error: result.error };
 
   let [user] = await db.select().from(users).where(eq(users.phone, phone));
   if (!user) {
@@ -57,7 +66,12 @@ export async function confirmOtp(_prev: OtpState, form: FormData): Promise<OtpSt
   }
   await createSession(user.id);
   const next = safeNext(form.get("next"));
-  if (!user.onboarded) redirect(next ? `/onboarding?next=${encodeURIComponent(next)}` : "/onboarding");
+  if (!user.onboarded) {
+    const onboarding = new URLSearchParams();
+    if (next) onboarding.set("next", next);
+    if (intent) onboarding.set("intent", intent);
+    redirect(`/onboarding${onboarding.size ? `?${onboarding}` : ""}`);
+  }
   redirect(next ?? "/feed");
 }
 

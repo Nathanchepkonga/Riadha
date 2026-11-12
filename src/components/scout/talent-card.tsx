@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { Clapperboard, MapPin, Plane, Sparkles, Users } from "lucide-react";
+import { BadgeCheck, Clapperboard, MapPin, Plane, Satellite, Sparkles, Timer, Users } from "lucide-react";
+import { trialLabel } from "@/lib/running/constants";
+import { raceTime } from "@/lib/running/format";
 import type { Talent } from "@/lib/scout";
 import { ageFrom, compact } from "@/lib/format";
 import { Avatar } from "@/components/ui/avatar";
@@ -11,7 +13,7 @@ export function TalentCard({ t }: { t: Talent }) {
   const age = ageFrom(t.dateOfBirth);
   const facts = [t.position, age !== null ? `${age} yrs` : null, t.heightCm ? `${t.heightCm} cm` : null, t.preferredSide ? `${t.preferredSide} side` : null].filter(Boolean);
   return (
-    <article data-reveal="up" className="card pressable group relative overflow-hidden p-4 transition-shadow hover:shadow-[0_18px_40px_-24px_rgba(8,16,24,.45)]">
+    <article data-reveal="up" suppressHydrationWarning className="card pressable group relative overflow-hidden p-4 transition-shadow hover:shadow-[0_18px_40px_-24px_rgba(8,16,24,.45)]">
       <Link href={`/u/${t.handle}`} className="absolute inset-0 z-0" aria-label={`Open ${t.displayName}'s profile`} />
       <div className="pointer-events-none relative flex items-start gap-3">
         <span className="relative">
@@ -44,6 +46,19 @@ export function TalentCard({ t }: { t: Talent }) {
           <BookmarkButton athleteId={t.id} saved={t.saved} />
         </span>
       </div>
+
+      {t.time && (
+        <p className="pointer-events-none relative mt-3 flex items-center gap-2 rounded-xl bg-gray-100 px-3 py-2 text-[13px]">
+          <Timer size={15} className="shrink-0" />
+          <span className="font-semibold">{trialLabel(t.time.event)}</span>
+          <span className="font-bold tabular">{raceTime(t.time.ms)}</span>
+          {t.time.verified ? (
+            <span className="ml-auto inline-flex items-center gap-1 truncate text-[11px] font-semibold text-navy"><BadgeCheck size={13} className="shrink-0" /> {t.time.club ? `Verified by ${t.time.club}` : "Verified"}</span>
+          ) : (
+            <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted"><Satellite size={12} /> GPS best</span>
+          )}
+        </p>
+      )}
 
       {(t.openToOpportunities || t.willingToRelocate) && (
         <div className="pointer-events-none relative mt-3 flex flex-wrap gap-1.5">

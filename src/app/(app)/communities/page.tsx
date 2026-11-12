@@ -39,6 +39,7 @@ export default async function CommunitiesPage({ searchParams }: PageProps<"/comm
                 key={u.event.id}
                 href={`/c/${u.community.slug}/events/${u.event.id}`}
                 data-reveal="right"
+                suppressHydrationWarning
                 className="pressable edge-glow relative w-[240px] shrink-0 snap-start overflow-hidden rounded-2xl bg-navy p-4 text-white"
               >
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-green">{formatKickoff(u.event.startsAt)}</p>
@@ -59,7 +60,7 @@ export default async function CommunitiesPage({ searchParams }: PageProps<"/comm
           <SectionHeader title="Your communities" />
           <div className="no-scrollbar -mx-4 mt-3 flex gap-3 overflow-x-auto px-4" data-stagger="60">
             {mine.map((m) => (
-              <Link key={m.community.id} href={`/c/${m.community.slug}?tab=chat`} data-reveal="right" className="pressable w-[132px] shrink-0">
+              <Link key={m.community.id} href={`/c/${m.community.slug}?tab=chat`} data-reveal="right" suppressHydrationWarning className="pressable w-[132px] shrink-0">
                 <CommunityCover name={m.community.name} category={m.community.category} coverUrl={m.community.coverUrl} className="aspect-square rounded-2xl" iconSize={40} />
                 <p className="mt-2 line-clamp-2 text-[13px] font-semibold leading-tight">{m.community.name}</p>
                 <p className="text-[11px] capitalize text-muted">{m.role} · {compact(m.members)}</p>
@@ -84,7 +85,7 @@ export default async function CommunitiesPage({ searchParams }: PageProps<"/comm
             <EmptyState title="No communities here yet" body="Start one and invite your crew." action={<Link href="/communities/new" className="btn btn-accent">Start a community</Link>} />
           ) : (
             all.map(({ community: c, members, joined, nextEvent }) => (
-              <article key={c.id} data-reveal="up" className="card pressable relative flex gap-3 overflow-hidden p-3">
+              <article key={c.id} data-reveal="up" suppressHydrationWarning className="card pressable relative flex gap-3 overflow-hidden p-3">
                 <Link href={`/c/${c.slug}`} className="absolute inset-0 z-0" aria-label={c.name} />
                 <CommunityCover name={c.name} category={c.category} coverUrl={c.coverUrl} className="pointer-events-none h-[84px] w-[84px] shrink-0 rounded-xl" iconSize={34} />
                 <div className="pointer-events-none min-w-0 flex-1 py-0.5">

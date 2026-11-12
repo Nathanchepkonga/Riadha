@@ -45,3 +45,16 @@ export const SKILLS: Record<string, string[]> = {
   Swimming: ["Freestyle", "Butterfly", "Backstroke", "Breaststroke", "Starts", "Turns", "Open water"],
 };
 export const ALL_SKILLS = [...new Set(Object.values(SKILLS).flat())];
+
+/** Why a post was reported (content_reports.reason). */
+export const REPORT_REASONS = [
+  { value: "not_sport", label: "Not about sport or fitness" },
+  { value: "nudity", label: "Nudity or sexual content" },
+  { value: "violence", label: "Violence or dangerous acts" },
+  { value: "harassment", label: "Bullying or harassment" },
+  { value: "minor_safety", label: "A child's safety" },
+  { value: "spam", label: "Spam or a scam" },
+  { value: "copyright", label: "Someone else's footage" },
+  { value: "other", label: "Something else" },
+] as const;
+export const reportReasonLabel = (v: string) => REPORT_REASONS.find((r) => r.value === v)?.label ?? v;

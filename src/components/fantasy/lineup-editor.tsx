@@ -138,20 +138,24 @@ export function LineupEditor({ initial, players, editable }: { initial: Pick[]; 
   const selPick = selected !== null ? lineup.find((p) => p.playerId === selected) : null;
 
   return (
-    <div>
+    <div aria-label="Fantasy team lineup">
       <div className="mb-2 flex items-center justify-between px-1 text-xs text-muted">
-        <span className="uppercase tracking-[0.12em]">Formation {formation}</span>
+        <span className="uppercase tracking-[0.12em]" aria-live="polite">Formation {formation}</span>
         {subbing ? <span className="font-semibold text-cobalt">Tap a highlighted player to swap</span> : editable ? <span>Tap a player for options</span> : <span>Deadline passed</span>}
       </div>
-      <Pitch className="min-h-[430px]">
+      <div role="group" aria-label={`Starting eleven, formation ${formation}`}>
+        <Pitch className="min-h-[430px]">
         {ORDER.map((pos) => (
           <PitchRow key={pos}>{starters.filter((p) => posOf(p.playerId) === pos).sort((a, b) => a.slot - b.slot).map(chip)}</PitchRow>
         ))}
-      </Pitch>
-      <Bench>{bench.map(chip)}</Bench>
+        </Pitch>
+      </div>
+      <div role="group" aria-label="Substitutes">
+        <Bench>{bench.map(chip)}</Bench>
+      </div>
 
       {message && (
-        <p role={message.error ? "alert" : "status"} className={cn("mt-3 rounded-xl px-4 py-3 text-sm", message.error ? "border-l-4 border-danger bg-danger/8 text-ink" : "border-l-4 border-green bg-green/20 text-ink")}>
+        <p role={message.error ? "alert" : "status"} aria-live={message.error ? "assertive" : "polite"} className={cn("mt-3 rounded-xl px-4 py-3 text-sm", message.error ? "border-l-4 border-danger bg-danger/8 text-ink" : "border-l-4 border-green bg-green/20 text-ink")}>
           {message.error ?? message.ok}
         </p>
       )}
