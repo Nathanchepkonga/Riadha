@@ -42,3 +42,10 @@ next-env.d.ts
 
 # local uploads (MVP storage)
 /storage/
+
+# cloudflare / opennext
+/.open-next/
+/.wrangler/
+.dev.vars
+.dev.vars.*
+worker-configuration.d.ts
