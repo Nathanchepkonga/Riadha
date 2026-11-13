@@ -8,6 +8,11 @@ import "./globals.css";
 // Brand typeface (kit): Sora for everything. The wordmark is outlined artwork in <Logo>.
 const sora = Sora({ variable: "--font-sora", subsets: ["latin"] });
 
+// Every page here is either personalized (cookie-based auth) or shows live data (counts, gameweek
+// countdown, scores). None of it should be baked into a static build; Cloudflare's build step also
+// has no DATABASE_URL, so any page that got statically prerendered would crash the build outright.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   // Absolute base for Open Graph/Twitter images. Set NEXT_PUBLIC_SITE_URL in production.
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
